@@ -406,7 +406,7 @@ for rozmiar in rozmiary:
 print()
 
 # Szczegółowy test dla różnych typów danych
-print("PORÓWNANIE RÓŻNYCH TYPÓW DANYCH (rozmiar = 16):")
+print("PORÓWNANIE RÓŻNYCH TYPÓW DANYCH")
 print()
 
 typy_danych = ["losowe", "posortowane", "odwrotne", "powtarzajace"]
@@ -452,16 +452,6 @@ OBSERWACJE I ANALIZA WYNIKÓW:
    - Liczba wywołań rekurencyjnych pozostaje identyczna dla tego samego rozmiaru
    - To potwierdza, że Merge Sort ma stałą złożoność O(n log n) we wszystkich przypadkach
 
-4. STOSUNEK WYWOŁANIA/n:
-   - Dla małych n stosunek jest bliski 2 (bo 2n-1 ≈ 2n)
-   - Dla większych n stosunek stabilizuje się w okolicy 2.0
-   - To pokazuje liniową zależność liczby wywołań od rozmiaru danych
-
-5. PORÓWNANIE Z n*log₂(n):
-   - n*log₂(n) reprezentuje teoretyczną liczbę operacji porównania/scalania
-   - Liczba wywołań rekurencyjnych (2n-1) jest zawsze mniejsza niż n*log₂(n) dla n > 4
-   - To pokazuje, że strukturalna rekursja jest efektywna
-
 WNIOSEK:
 Analiza potwierdza teoretyczne właściwości algorytmu Merge Sort - stałą złożoność
 czasową O(n log n) niezależnie od danych wejściowych, co czyni go przewidywalnym
@@ -471,7 +461,7 @@ i niezawodnym algorytmem sortowania.
 # Zad 6
 def quick_sort(lista):
     """
-    Algorytm sortowania szybkiego (QuickSort) - rekurencyjna implementacja.
+    Algorytm sortowania szybkiego (QuickSort).
     Przyjmuje pierwszy element jako piwot.
     
     Parametr:
@@ -507,7 +497,7 @@ def quick_sort(lista):
 
 def quick_sort_in_place(lista, lewy=0, prawy=None):
     """
-    Alternatywna wersja QuickSort - sortowanie w miejscu (bardziej efektywna pamięciowo).
+    Alternatywna wersja QuickSort - sortowanie w miejscu.
     
     Parametry:
     lista - lista do posortowania (modyfikowana w miejscu)
