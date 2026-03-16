@@ -62,8 +62,10 @@ else:
     initial_tmax = 5.0
     initial_impulse_position = 2.5  # Pozycja impulsu jednostkowego
 
+initial_samples = 1000  # Liczba sampli
+
 # Oś czasu
-t = np.linspace(0, initial_tmax, 1000)
+t = np.linspace(0, initial_tmax, initial_samples)
 
 # Funkcja do generowania sygnału
 def generate_signal(t, signal_type, freq, amp, phase, impulse_pos=None):
@@ -75,6 +77,11 @@ def generate_signal(t, signal_type, freq, amp, phase, impulse_pos=None):
         return amp * signal.square(2 * np.pi * freq * t + phase)
     elif signal_type == 'piłokształtny':
         return amp * signal.sawtooth(2 * np.pi * freq * t + phase)
+    elif signal_type == 'trójkątny':
+        return amp * signal.sawtooth(2 * np.pi * freq * t + phase, width=0.5)
+    elif signal_type == 'szum biały':
+        np.random.seed(42)  # Dla powtarzalności
+        return amp * np.random.normal(0, 1, len(t))
     elif signal_type == 'chirp':
         return amp * signal.chirp(t, f0=freq, f1=freq*10, t1=t[-1], method='linear')
     elif signal_type == 'superpozycja':
@@ -133,7 +140,8 @@ def save_signal_data():
     signal_type = radio.value_selected
     
     # Wygeneruj aktualny sygnał
-    t_current = np.linspace(0, tmax, 1000)
+    samples = int(slider_samples.val)
+    t_current = np.linspace(0, tmax, samples)
     if signal_type == 'impuls jednostkowy':
         y_current = generate_signal(t_current, signal_type, freq, amp, phase, impulse_pos)
     else:
@@ -195,9 +203,12 @@ slider_tmax = Slider(ax_tmax, 'Zakres czasu', 1.0, 20.0, valinit=initial_tmax, v
 ax_impulse_pos = plt.axes([0.15, 0.05, 0.5, 0.03])
 slider_impulse_pos = Slider(ax_impulse_pos, 'Pozycja impulsu', 0.0, initial_tmax, valinit=initial_impulse_position, valstep=0.1)
 
+ax_samples = plt.axes([0.15, 0.00, 0.5, 0.03])
+slider_samples = Slider(ax_samples, 'Liczba sampli', 100, 5000, valinit=initial_samples, valstep=100)
+
 # Radiobuttons dla typu sygnału
 ax_radio = plt.axes([0.75, 0.05, 0.2, 0.3])
-radio = RadioButtons(ax_radio, ('sinus', 'cosinus', 'prostokątny', 'piłokształtny', 'chirp', 'superpozycja', 'impuls jednostkowy'))
+radio = RadioButtons(ax_radio, ('sinus', 'cosinus', 'prostokątny', 'piłokształtny', 'chirp', 'superpozycja', 'impuls jednostkowy', 'trójkątny', 'szum biały'))
 
 # Przycisk do zapisywania
 ax_save_button = plt.axes([0.75, 0.38, 0.1, 0.05])
@@ -238,7 +249,8 @@ def update(val):
         impulse_pos = tmax
     
     # Aktualizuj oś czasu
-    t_new = np.linspace(0, tmax, 1000)
+    samples = int(slider_samples.val)
+    t_new = np.linspace(0, tmax, samples)
     
     # Generuj nowy sygnał  
     y_new = generate_signal(t_new, signal_type, freq, amp, phase, impulse_pos)
@@ -263,6 +275,7 @@ slider_amp.on_changed(update)
 slider_phase.on_changed(update)
 slider_tmax.on_changed(update)
 slider_impulse_pos.on_changed(update)
+slider_samples.on_changed(update)
 
 # Podłączenie radiobuttons do funkcji ładującej parametry
 radio.on_clicked(on_signal_type_change)
