@@ -1,7 +1,7 @@
 import cv2
 import os
 
-filename = "obraz.png"
+filename = "obraz2.jpg"
 current_dir = os.path.dirname(os.path.abspath(__file__))
 filepath = os.path.join(current_dir, filename)
 image1 = cv2.imread(filepath)
@@ -27,12 +27,10 @@ def generate_histogram(image):
     
     # Histogram wszystkich kanałów na jednym wykresie
     plt.figure(figsize=(12, 6))
-    data = []
     for i in range(3):
         hist = cv2.calcHist([image], [i], None, [256], [0, 256])
-        data.append(hist)
+        plt.hist(hist, bins=256, color=colors[i], label=channel_names[i], histtype='step', linewidth=2)
         
-    plt.hist(data, bins=256, color=colors, label=channel_names, histtype='step', linewidth=2)
     plt.title('Histogram wszystkich kanałów BGR')
     plt.xlabel('Wartość piksela')
     plt.ylabel('Liczba pikseli')

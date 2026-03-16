@@ -141,13 +141,11 @@ n_samples = 1000  # liczba próbek
 time = np.linspace(0, 10, n_samples)  # oś czasu od 0 do 10 sekund
 
 # Generowanie przebiegów czasowych
-# 1. Funkcja rand() - rozkład jednostajny [0, 1)
 signal_rand = np.random.rand(n_samples)
 
-# 2. Funkcja randn() - rozkład normalny (średnia=0, odchylenie=1)
 signal_randn = np.random.randn(n_samples)
 
-# 3. Dodatkowe przykłady - przebiegi czasowe z różnymi parametrami
+# Dodatkowe przykłady - przebiegi czasowe z różnymi parametrami
 signal_rand_scaled = 5 * np.random.rand(n_samples) - 2.5  # rozkład jednostajny [-2.5, 2.5]
 signal_randn_scaled = 2 * np.random.randn(n_samples) + 1  # rozkład normalny (średnia=1, odchylenie=2)
 
@@ -261,12 +259,6 @@ ax3.boxplot(data_to_plot, labels=['rand()', 'randn()'])
 ax3.set_title('Box plot - porównanie rozkładów')
 ax3.set_ylabel('Wartość')
 ax3.grid(True, alpha=0.3)
-
-# Q-Q plot dla sprawdzenia normalności randn()
-from scipy import stats
-stats.probplot(signal_randn, dist="norm", plot=ax4)
-ax4.set_title('Q-Q plot dla randn() vs rozkład normalny')
-ax4.grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.show()
