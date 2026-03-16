@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Button
 
 def generate_2d_brown_noise_image(height, width, step_size=1.0, seed=None):
     """
@@ -54,7 +55,26 @@ if __name__ == "__main__":
     # Generowanie obrazu z podwójnego cumsum 2D
     image = generate_2d_brown_noise_image(height, width, step_size, seed)
     
-    # Wizualizacja
-    plot_brown_noise_image(image)
-    
+    # Wizualizacja z interaktywnym przyciskiem
+    fig, ax = plt.subplots(figsize=(10, 6))
+    plt.subplots_adjust(bottom=0.15)
+
+    im = ax.imshow(image, cmap='plasma', aspect='auto')
+    cbar = fig.colorbar(im, ax=ax, label='Wartość')
+    ax.set_title('Szum Browna 2D')
+    ax.set_xlabel('X (szerokość)')
+    ax.set_ylabel('Y (wysokość)')
+
+    def regenerate_noise(event):
+        # seed=None daje nowy, losowy obraz przy każdym kliknięciu
+        new_image = generate_2d_brown_noise_image(height, width, step_size, seed=None)
+        im.set_data(new_image)
+        im.set_clim(vmin=new_image.min(), vmax=new_image.max())
+        fig.canvas.draw_idle()
+
+    ax_button = plt.axes([0.42, 0.03, 0.16, 0.05])
+    button = Button(ax_button, 'Regeneruj')
+    button.on_clicked(regenerate_noise)
+
+    plt.show()
     print("\nGenerowanie zakończone!")
