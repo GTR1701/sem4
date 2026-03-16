@@ -9,7 +9,8 @@ import os
 
 # Konfiguracja wykresu
 fig, ax = plt.subplots(figsize=(12, 8))
-plt.subplots_adjust(left=0.1, bottom=0.35)
+# right=0.72 zostawia miejsce po prawej na RadioButtons i przycisk Save
+plt.subplots_adjust(left=0.1, bottom=0.35, right=0.72, top=0.95)
 
 def load_signal_from_file(signal_type):
     """Ładuje parametry sygnału z pliku CSV jeśli istnieje"""

@@ -1,157 +1,154 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider
+import matplotlib.gridspec as gridspec
 
-def generate_normal_timeseries():
+def interactive_normal_timeseries():
     """
-    Generuje kilka przebiegów czasowych z rozkładu normalnego dla różnych parametrów
-    i przedstawia ich histogramy
+    Tworzy interaktywny wykres przebiegu czasowego z rozkładu normalnego
+    z suwakami do zmiany parametrów w czasie rzeczywistym
     """
     
-    # Ustawienie seed dla powtarzalności wyników
+    # Parametry początkowe
+    initial_mean = 0.0
+    initial_std = 1.0
+    initial_size = 1000
+    
+    # Ustawienie seed dla powtarzalności
     np.random.seed(42)
     
-    # Parametry dla różnych przebiegów
-    parameters = [
-        {'mean': 0, 'std': 1, 'size': 1000, 'label': 'μ=0, σ=1'},
-        {'mean': 5, 'std': 2, 'size': 1000, 'label': 'μ=5, σ=2'},
-        {'mean': -2, 'std': 0.5, 'size': 1000, 'label': 'μ=-2, σ=0.5'},
-        {'mean': 10, 'std': 3, 'size': 1500, 'label': 'μ=10, σ=3'}
-    ]
+    # Tworzenie layoutu z GridSpec
+    fig = plt.figure(figsize=(14, 10))
+    # bottom=0.28 zostawia wyraźne miejsce poniżej wykresów na suwaki
+    gs = gridspec.GridSpec(2, 2, figure=fig,
+                           left=0.1, right=0.95, top=0.95, bottom=0.28,
+                           height_ratios=[1, 1], hspace=0.48, wspace=0.35)
     
-    # Generowanie przebiegów czasowych
-    timeseries = []
-    for params in parameters:
-        ts = np.random.normal(
-            loc=params['mean'], 
-            scale=params['std'], 
-            size=params['size']
-        )
-        timeseries.append({
-            'data': ts,
-            'params': params
-        })
-        print(f"Wygenerowano przebieg: {params['label']}")
-        print(f"  Rzeczywista średnia: {np.mean(ts):.3f}")
-        print(f"  Rzeczywiste odchylenie standardowe: {np.std(ts):.3f}")
-        print(f"  Min: {np.min(ts):.3f}, Max: {np.max(ts):.3f}")
-        print()
+    # Główne wykresy
+    ax_timeseries = fig.add_subplot(gs[0, :])
+    ax_histogram = fig.add_subplot(gs[1, 0])
+    ax_pdf = fig.add_subplot(gs[1, 1])
     
-    return timeseries
-
-def plot_timeseries_and_histograms(timeseries):
-    """
-    Tworzy wykresy przebiegów czasowych i ich histogramów
-    """
+    # Generowanie początkowych danych
+    data = np.random.normal(initial_mean, initial_std, initial_size)
+    time_axis = np.arange(len(data))
     
-    n_series = len(timeseries)
+    # Początkowe wykresy
+    line_timeseries, = ax_timeseries.plot(time_axis, data, alpha=0.7, linewidth=0.8, color='blue')
+    mean_line = ax_timeseries.axhline(y=initial_mean, color='red', linestyle='--', alpha=0.7)
     
-    # Tworzenie subplotów - przebiegi czasowe
-    fig1, axes1 = plt.subplots(n_series, 1, figsize=(12, 3*n_series))
-    if n_series == 1:
-        axes1 = [axes1]
+    # Histogram
+    n_bins = 50
+    n, bins, patches = ax_histogram.hist(data, bins=n_bins, density=True, alpha=0.7, 
+                                        color='skyblue', edgecolor='black', linewidth=0.5)
     
-    fig1.suptitle('Przebiegi czasowe z rozkładu normalnego', fontsize=16)
+    # Teoretyczny rozkład normalny
+    x_theory = np.linspace(np.min(data), np.max(data), 200)
+    y_theory = (1/(initial_std*np.sqrt(2*np.pi))) * \
+               np.exp(-0.5*((x_theory-initial_mean)/initial_std)**2)
+    line_pdf, = ax_pdf.plot(x_theory, y_theory, 'r-', linewidth=2, label='Teoretyczny PDF')
     
-    for i, ts_data in enumerate(timeseries):
-        time_axis = np.arange(len(ts_data['data']))
-        axes1[i].plot(time_axis, ts_data['data'], alpha=0.7, linewidth=0.8)
-        axes1[i].set_title(f"Przebieg czasowy: {ts_data['params']['label']}")
-        axes1[i].set_xlabel('Czas [próbki]')
-        axes1[i].set_ylabel('Amplituda')
-        axes1[i].grid(True, alpha=0.3)
-        axes1[i].axhline(y=ts_data['params']['mean'], color='red', 
-                        linestyle='--', alpha=0.7, label=f"μ={ts_data['params']['mean']}")
-        axes1[i].legend()
+    # Ustawienia wykresów
+    ax_timeseries.set_title('Interaktywny przebieg czasowy z rozkładu normalnego')
+    ax_timeseries.set_xlabel('Czas [próbki]')
+    ax_timeseries.set_ylabel('Amplituda')
+    ax_timeseries.grid(True, alpha=0.3)
     
-    plt.tight_layout()
+    ax_histogram.set_title('Histogram danych')
+    ax_histogram.set_xlabel('Wartość')
+    ax_histogram.set_ylabel('Gęstość prawdopodobieństwa')
+    ax_histogram.grid(True, alpha=0.3)
     
-    # Tworzenie histogramów
-    fig2, axes2 = plt.subplots(2, 2, figsize=(12, 10))
-    axes2 = axes2.flatten()
+    ax_pdf.set_title('Funkcja gęstości prawdopodobieństwa')
+    ax_pdf.set_xlabel('Wartość')
+    ax_pdf.set_ylabel('Gęstość prawdopodobieństwa')
+    ax_pdf.grid(True, alpha=0.3)
+    ax_pdf.legend()
     
-    fig2.suptitle('Histogramy przebiegów czasowych', fontsize=16)
+    # Tworzenie suwaków – pozycje poniżej bottom=0.28 (obszar wykresów)
+    slider_height = 0.03
     
-    for i, ts_data in enumerate(timeseries):
-        data = ts_data['data']
-        params = ts_data['params']
+    # Suwak dla średniej (lewa kolumna, górny rząd)
+    ax_mean_slider = plt.axes([0.1, 0.19, 0.35, slider_height])
+    slider_mean = Slider(ax_mean_slider, 'Średnia (μ)', -5.0, 5.0,
+                        valinit=initial_mean, valstep=0.1)
+    
+    # Suwak dla odchylenia standardowego (prawa kolumna, górny rząd)
+    ax_std_slider = plt.axes([0.55, 0.19, 0.35, slider_height])
+    slider_std = Slider(ax_std_slider, 'Odch. std. (σ)', 0.1, 5.0,
+                       valinit=initial_std, valstep=0.1)
+    
+    # Suwak dla liczby próbek (lewa kolumna, dolny rząd)
+    ax_size_slider = plt.axes([0.1, 0.08, 0.35, slider_height])
+    slider_size = Slider(ax_size_slider, 'Liczba próbek', 100, 5000,
+                        valinit=initial_size, valstep=100)
+    
+    # Text box dla wyświetlania statystyk (prawa kolumna, dolny rząd)
+    stats_text = plt.figtext(0.55, 0.05, '', fontsize=9,
+                           bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray"))
+    
+    def update_plots(val=None):
+        """Aktualizuje wszystkie wykresy po zmianie parametrów"""
         
-        # Histogram
-        n_bins = 50
-        axes2[i].hist(data, bins=n_bins, density=True, alpha=0.7, 
-                     color=f'C{i}', edgecolor='black', linewidth=0.5)
+        # Pobieranie aktualnych wartości z suwaków
+        mean = slider_mean.val
+        std = slider_std.val
+        size = int(slider_size.val)
         
-        # Teoretyczny rozkład normalny
-        x_theory = np.linspace(np.min(data), np.max(data), 100)
-        y_theory = (1/(params['std']*np.sqrt(2*np.pi))) * \
-                   np.exp(-0.5*((x_theory-params['mean'])/params['std'])**2)
-        axes2[i].plot(x_theory, y_theory, 'r-', linewidth=2, 
-                     label='Teoretyczny rozkład normalny')
+        # Generowanie nowych danych
+        new_data = np.random.normal(mean, std, size)
+        new_time_axis = np.arange(len(new_data))
         
-        axes2[i].set_title(f"Histogram: {params['label']}")
-        axes2[i].set_xlabel('Wartość')
-        axes2[i].set_ylabel('Gęstość prawdopodobieństwa')
-        axes2[i].grid(True, alpha=0.3)
-        axes2[i].legend()
+        # Aktualizacja przebiegu czasowego
+        line_timeseries.set_data(new_time_axis, new_data)
+        ax_timeseries.set_xlim(0, len(new_data))
+        ax_timeseries.set_ylim(np.min(new_data) - 0.5*std, np.max(new_data) + 0.5*std)
+        mean_line.set_ydata([mean, mean])
         
-        # Dodanie statystyk na wykres
-        mean_actual = np.mean(data)
-        std_actual = np.std(data)
-        axes2[i].axvline(x=mean_actual, color='green', linestyle=':', 
-                        label=f'Rzeczywista μ={mean_actual:.2f}')
+        # Aktualizacja histogramu
+        ax_histogram.clear()
+        ax_histogram.hist(new_data, bins=n_bins, density=True, alpha=0.7, 
+                         color='skyblue', edgecolor='black', linewidth=0.5)
+        ax_histogram.set_title('Histogram danych')
+        ax_histogram.set_xlabel('Wartość')
+        ax_histogram.set_ylabel('Gęstość prawdopodobieństwa')
+        ax_histogram.grid(True, alpha=0.3)
+        
+        # Aktualizacja PDF
+        x_theory_new = np.linspace(np.min(new_data), np.max(new_data), 200)
+        y_theory_new = (1/(std*np.sqrt(2*np.pi))) * \
+                       np.exp(-0.5*((x_theory_new-mean)/std)**2)
+        line_pdf.set_data(x_theory_new, y_theory_new)
+        ax_pdf.set_xlim(np.min(new_data) - std, np.max(new_data) + std)
+        ax_pdf.set_ylim(0, np.max(y_theory_new) * 1.1)
+        
+        # Aktualizacja statystyk
+        actual_mean = np.mean(new_data)
+        actual_std = np.std(new_data)
+        actual_min = np.min(new_data)
+        actual_max = np.max(new_data)
+        
+        stats_str = f"""Statystyki rzeczywiste:
+Średnia: {actual_mean:.3f}
+Odch. std: {actual_std:.3f}
+Min: {actual_min:.3f}
+Max: {actual_max:.3f}
+Liczba próbek: {size}"""
+        
+        stats_text.set_text(stats_str)
+        
+        # Odświeżenie wykresu
+        fig.canvas.draw()
     
-    plt.tight_layout()
+    # Podłączenie funkcji update do suwaków
+    slider_mean.on_changed(update_plots)
+    slider_std.on_changed(update_plots)
+    slider_size.on_changed(update_plots)
+    
+    # Początkowa aktualizacja statystyk
+    update_plots()
+    
     plt.show()
-
-def analyze_statistics(timeseries):
-    """
-    Analizuje statystyki przebiegów czasowych
-    """
-    
-    print("="*60)
-    print("ANALIZA STATYSTYCZNA PRZEBIEGÓW CZASOWYCH")
-    print("="*60)
-    
-    for i, ts_data in enumerate(timeseries):
-        data = ts_data['data']
-        params = ts_data['params']
-        
-        print(f"\nPrzebieg {i+1}: {params['label']}")
-        print("-" * 40)
-        print(f"Parametry teoretyczne:")
-        print(f"  Średnia (μ): {params['mean']}")
-        print(f"  Odchylenie standardowe (σ): {params['std']}")
-        print(f"  Liczba próbek: {params['size']}")
-        
-        print(f"\nStatystyki rzeczywiste:")
-        print(f"  Średnia: {np.mean(data):.6f}")
-        print(f"  Odchylenie standardowe: {np.std(data):.6f}")
-        print(f"  Mediana: {np.median(data):.6f}")
-        print(f"  Skośność: {calculate_skewness(data):.6f}")
-        print(f"  Kurtoza: {calculate_kurtosis(data):.6f}")
-        print(f"  Wartość minimalna: {np.min(data):.6f}")
-        print(f"  Wartość maksymalna: {np.max(data):.6f}")
-        
-        # Percentyle
-        percentiles = [5, 25, 50, 75, 95]
-        print(f"  Percentyle: ", end="")
-        for p in percentiles:
-            print(f"{p}%={np.percentile(data, p):.3f} ", end="")
-        print()
-
-def calculate_skewness(data):
-    """Oblicza skośność rozkładu"""
-    mean = np.mean(data)
-    std = np.std(data)
-    n = len(data)
-    return (n/((n-1)*(n-2))) * np.sum(((data - mean)/std)**3)
-
-def calculate_kurtosis(data):
-    """Oblicza kurtozę rozkładu"""
-    mean = np.mean(data)
-    std = np.std(data)
-    n = len(data)
-    return (n*(n+1)/((n-1)*(n-2)*(n-3))) * np.sum(((data - mean)/std)**4) - \
-           (3*(n-1)**2/((n-2)*(n-3)))
 
 def compare_distributions():
     """
@@ -197,17 +194,7 @@ if __name__ == "__main__":
     print("Generowanie przebiegów czasowych z rozkładu normalnego")
     print("="*60)
     
-    # Generowanie przebiegów czasowych
-    timeseries = generate_normal_timeseries()
-    
-    # Tworzenie wykresów
-    plot_timeseries_and_histograms(timeseries)
-    
-    # Analiza statystyczna
-    analyze_statistics(timeseries)
-    
-    # Porównanie różnych rozkładów
-    print("\nPorównanie różnych rozkładów normalnych:")
-    compare_distributions()
+    # Uruchomienie interaktywnego narzędzia
+    interactive_normal_timeseries()
     
     print("\nAnalizę ukończono!")

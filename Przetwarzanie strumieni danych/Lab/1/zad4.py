@@ -1,8 +1,140 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider, RadioButtons
+import matplotlib.gridspec as gridspec
+from scipy import stats
 
-# Ustawienia dla reprodukowalności wyników
 np.random.seed(42)
+
+
+def generate_signal(dist_type, scale, offset, n_samples):
+    if dist_type == 'rand (jednostajny)':
+        return scale * np.random.rand(n_samples) + offset
+    else:
+        return scale * np.random.randn(n_samples) + offset
+
+
+def interactive_random_signal():
+    initial_dist = 'rand (jednostajny)'
+    initial_scale = 1.0
+    initial_offset = 0.0
+    initial_n_samples = 1000
+    initial_n_bins = 50
+
+    fig = plt.figure(figsize=(14, 9))
+    # bottom=0.30 zostawia miejsce na suwaki; right=0.72 na RadioButtons po prawej
+    gs = gridspec.GridSpec(2, 2, figure=fig,
+                           left=0.1, right=0.72, top=0.95, bottom=0.30,
+                           height_ratios=[1, 1], hspace=0.48, wspace=0.35)
+
+    ax_timeseries = fig.add_subplot(gs[0, :])
+    ax_histogram = fig.add_subplot(gs[1, 0])
+    ax_qqplot = fig.add_subplot(gs[1, 1])
+
+    data = generate_signal(initial_dist, initial_scale, initial_offset, initial_n_samples)
+    time_axis = np.arange(len(data))
+
+    line, = ax_timeseries.plot(time_axis, data, alpha=0.7, linewidth=0.8, color='blue')
+    ax_histogram.hist(data, bins=initial_n_bins, density=True,
+                      alpha=0.7, color='skyblue', edgecolor='black', linewidth=0.5)
+    stats.probplot(data, dist="norm", plot=ax_qqplot)
+
+    ax_timeseries.set_title('Interaktywny przebieg czasowy sygnału losowego')
+    ax_timeseries.set_xlabel('Próbka')
+    ax_timeseries.set_ylabel('Amplituda')
+    ax_timeseries.grid(True, alpha=0.3)
+
+    ax_histogram.set_title('Histogram')
+    ax_histogram.set_xlabel('Wartość')
+    ax_histogram.set_ylabel('Gęstość prawdopodobieństwa')
+    ax_histogram.grid(True, alpha=0.3)
+
+    ax_qqplot.set_title('Q-Q plot (vs rozkład normalny)')
+    ax_qqplot.grid(True, alpha=0.3)
+
+    # Suwaki (poniżej bottom=0.30)
+    slider_h = 0.03
+    ax_scale_sl = plt.axes([0.1, 0.22, 0.55, slider_h])
+    slider_scale = Slider(ax_scale_sl, 'Skala', 0.1, 5.0,
+                          valinit=initial_scale, valstep=0.1)
+
+    ax_offset_sl = plt.axes([0.1, 0.17, 0.55, slider_h])
+    slider_offset = Slider(ax_offset_sl, 'Przesunięcie', -5.0, 5.0,
+                           valinit=initial_offset, valstep=0.1)
+
+    ax_samples_sl = plt.axes([0.1, 0.12, 0.55, slider_h])
+    slider_samples = Slider(ax_samples_sl, 'Liczba próbek', 100, 5000,
+                            valinit=initial_n_samples, valstep=100)
+
+    ax_bins_sl = plt.axes([0.1, 0.07, 0.55, slider_h])
+    slider_bins = Slider(ax_bins_sl, 'Liczba przedziałów', 5, 200,
+                         valinit=initial_n_bins, valstep=5)
+
+    # RadioButtons po prawej stronie (poza obszarem wykresów)
+    ax_radio = plt.axes([0.75, 0.10, 0.2, 0.14])
+    radio = RadioButtons(ax_radio, ('rand (jednostajny)', 'randn (normalny)'), active=0)
+
+    # Box ze statystykami
+    stats_text = plt.figtext(0.75, 0.27, '', fontsize=9,
+                             bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray"))
+
+    def update(val=None):
+        dist_type = radio.value_selected
+        scale = slider_scale.val
+        offset = slider_offset.val
+        n_samples = int(slider_samples.val)
+        n_bins = int(slider_bins.val)
+
+        new_data = generate_signal(dist_type, scale, offset, n_samples)
+
+        line.set_data(np.arange(n_samples), new_data)
+        ax_timeseries.set_xlim(0, n_samples)
+        ax_timeseries.set_ylim(np.min(new_data) - 0.5, np.max(new_data) + 0.5)
+
+        ax_histogram.clear()
+        ax_histogram.hist(new_data, bins=n_bins, density=True, alpha=0.7,
+                          color='skyblue', edgecolor='black', linewidth=0.5)
+        ax_histogram.set_title('Histogram')
+        ax_histogram.set_xlabel('Wartość')
+        ax_histogram.set_ylabel('Gęstość prawdopodobieństwa')
+        ax_histogram.grid(True, alpha=0.3)
+
+        ax_qqplot.clear()
+        stats.probplot(new_data, dist="norm", plot=ax_qqplot)
+        ax_qqplot.set_title('Q-Q plot (vs rozkład normalny)')
+        ax_qqplot.grid(True, alpha=0.3)
+
+        stats_text.set_text(
+            f"Statystyki:\n"
+            f"Średnia:  {np.mean(new_data):.3f}\n"
+            f"Odch. std: {np.std(new_data):.3f}\n"
+            f"Min: {np.min(new_data):.3f}\n"
+            f"Max: {np.max(new_data):.3f}\n"
+            f"Próbki: {n_samples}"
+        )
+
+        fig.canvas.draw()
+
+    slider_scale.on_changed(update)
+    slider_offset.on_changed(update)
+    slider_samples.on_changed(update)
+    slider_bins.on_changed(update)
+    radio.on_clicked(update)
+
+    update()
+    plt.show()
+
+
+if __name__ == "__main__":
+    print("Interaktywny generator sygnałów losowych (rand / randn)")
+    print("="*60)
+    print("Użyj suwaków i przycisków radiowych do zmiany parametrów:")
+    print("  Skala        – mnoży wartości sygnału")
+    print("  Przesunięcie – przesuwa sygnał wzdłuż osi Y")
+    print("  Liczba próbek / przedziałów histogramu")
+    print("="*60)
+    interactive_random_signal()
+
 
 # Parametry
 n_samples = 1000  # liczba próbek
