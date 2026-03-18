@@ -3,7 +3,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.widgets import RadioButtons, Button
+from matplotlib.widgets import RadioButtons, Button, Slider
 import tkinter as tk
 from tkinter import filedialog
 
@@ -15,10 +15,13 @@ image1 = cv2.imread(filepath)
 filepath2 = os.path.join(current_dir, 'obraz_kopiowany.png')
 cv2.imwrite(filepath2, image1)
 
-# Zmienna przechowująca aktualnie wyświetlany obraz i przestrzeń kolorów
+# Zmienna przechowująca stan aplikacji
 state = {
     'image': image1,
     'color_space': 'RGB',
+    'noise': False,         # czy szum sól i pieprz jest włączony
+    'noise_amount': 0.02,   # odsetek zaburzonych pikseli (2 %)
+    'rotation': 0,          # kąt obrotu w stopniach
 }
 
 COLOR_SPACES = ['RGB', 'aRGB', 'YCbCr', 'HSL']
@@ -29,6 +32,47 @@ X_LABELS = {
     'YCbCr': 'Wartość składowej (0–255)',
     'HSL':   'Wartość składowej (0–255)',
 }
+
+
+def add_salt_pepper(image_bgr, amount=0.02):
+    """Nakłada szum sól i pieprz – nie modyfikuje oryginału."""
+    out = image_bgr.copy()
+    total = image_bgr.size // image_bgr.shape[2]   # liczba pikseli
+    n = int(amount * total)
+    rng = np.random.default_rng(seed=0)            # deterministyczny szum
+    # Sól (białe piksele)
+    rows = rng.integers(0, image_bgr.shape[0], n)
+    cols = rng.integers(0, image_bgr.shape[1], n)
+    out[rows, cols] = 255
+    # Pieprz (czarne piksele)
+    rows = rng.integers(0, image_bgr.shape[0], n)
+    cols = rng.integers(0, image_bgr.shape[1], n)
+    out[rows, cols] = 0
+    return out
+
+
+def rotate_image(image_bgr, angle):
+    """Obraca obraz o podany kąt (stopnie, CCW), rozszerza canvas."""
+    if angle == 0:
+        return image_bgr
+    h, w = image_bgr.shape[:2]
+    cx, cy = w / 2.0, h / 2.0
+    M = cv2.getRotationMatrix2D((cx, cy), angle, 1.0)
+    cos_a = abs(M[0, 0])
+    sin_a = abs(M[0, 1])
+    new_w = int(h * sin_a + w * cos_a)
+    new_h = int(h * cos_a + w * sin_a)
+    M[0, 2] += new_w / 2.0 - cx
+    M[1, 2] += new_h / 2.0 - cy
+    return cv2.warpAffine(image_bgr, M, (new_w, new_h), borderValue=(0, 0, 0))
+
+
+def current_display_image():
+    """Zwraca obraz do wyświetlenia (obrót → szum)."""
+    img = rotate_image(state['image'], state['rotation'])
+    if state['noise']:
+        img = add_salt_pepper(img, state['noise_amount'])
+    return img
 
 
 def smooth_hist(arr, sigma=2.5):
@@ -129,37 +173,53 @@ def redraw_histogram(ax, image_bgr, color_space):
     ax.set_xlabel(X_LABELS[color_space], color='gray', fontsize=8)
     ax.set_ylabel('Częstotliwość (norm.)', color='gray', fontsize=8)
 
-fig = plt.figure(figsize=(15, 8), facecolor='#1a1a1a')
+fig = plt.figure(figsize=(16, 9), facecolor='#1a1a1a')
 
-# Siatka: 2 wiersze × 2 kolumny; prawa kolumna zawiera radio + przycisk
-gs = fig.add_gridspec(
-    2, 2,
-    width_ratios=[5.2, 1],
-    height_ratios=[1.1, 1],
-    hspace=0.50,
-    wspace=0.18,
-    left=0.07, right=0.97,
-    top=0.9, bottom=0.10,
-)
+# Wszystkie osie pozycjonowane ręcznie [left, bottom, width, height]
+# Lewa kolumna (szeroka): obraz | suwak | histogram
+# Prawa kolumna (wąska):  radio | przyciski
+ax_img    = fig.add_axes([0.05, 0.44, 0.78, 0.52])               # duży podgląd
+ax_slider = fig.add_axes([0.05, 0.36, 0.78, 0.04],               # suwak obrotu
+                         facecolor='#2a2a2a')
+ax_hist   = fig.add_axes([0.05, 0.07, 0.78, 0.26])               # histogram
+ax_rb     = fig.add_axes([0.867, 0.35, 0.115, 0.58],             # radio
+                         facecolor='#2a2a2a')
+ax_btn     = fig.add_axes([0.855, 0.22, 0.135, 0.07])            # wybierz obraz
+ax_btn_snp = fig.add_axes([0.855, 0.12, 0.135, 0.07])            # szum S&P
 
-ax_img  = fig.add_subplot(gs[0, 0])
-ax_hist = fig.add_subplot(gs[1, 0])
+def redraw_image(title_path=None):
+    ax_img.cla()
+    ax_img.imshow(cv2.cvtColor(current_display_image(), cv2.COLOR_BGR2RGB))
+    name = title_path or filepath
+    tags = []
+    if state['noise']:
+        tags.append('szum S&P')
+    if state['rotation'] != 0:
+        tags.append(f'{state["rotation"]:+.0f}°')
+    tag_str = '  [' + ', '.join(tags) + ']' if tags else ''
+    ax_img.set_title(
+        f'Załadowany obraz: {os.path.basename(name)}{tag_str}',
+        color='white', fontsize=10, pad=6,
+    )
+    ax_img.axis('off')
 
-# Prawa kolumna: radio (górne 80%) + przycisk (dolne 20%)
-ax_rb  = fig.add_axes([0.875, 0.25, 0.105, 0.60], facecolor='#2a2a2a')
-ax_btn = fig.add_axes([0.860, 0.10, 0.125, 0.08])
 
 # --- Obraz ---
-image_rgb = cv2.cvtColor(state['image'], cv2.COLOR_BGR2RGB)
-ax_img.imshow(image_rgb)
-ax_img.set_title(
-    f'Załadowany obraz: {os.path.basename(filepath)}',
-    color='white', fontsize=10, pad=6,
-)
-ax_img.axis('off')
+redraw_image()
 
 # --- Histogram (domyślnie RGB) ---
-redraw_histogram(ax_hist, state['image'], state['color_space'])
+redraw_histogram(ax_hist, current_display_image(), state['color_space'])
+
+# --- Suwak obrotu ---
+rotation_slider = Slider(
+    ax_slider, 'Obrót', -180, 180,
+    valinit=0, valstep=1,
+    color='dodgerblue',
+)
+rotation_slider.label.set_color('white')
+rotation_slider.valtext.set_color('white')
+for spine in ax_slider.spines.values():
+    spine.set_edgecolor('#555555')
 
 # --- Radio buttons ---
 for spine in ax_rb.spines.values():
@@ -175,6 +235,11 @@ ax_rb.set_title('Przestrzeń\nkolorów', color='white', fontsize=10, pad=10)
 btn = Button(ax_btn, 'Wybierz obraz', color='#3a3a3a', hovercolor='#555555')
 btn.label.set_color('white')
 btn.label.set_fontsize(9)
+
+# --- Toggle szumu sól i pieprz ---
+btn_snp = Button(ax_btn_snp, 'Szum S&P: WYŁ', color='#3a3a3a', hovercolor='#555555')
+btn_snp.label.set_color('#aaaaaa')
+btn_snp.label.set_fontsize(9)
 
 
 def on_open(_event):
@@ -199,29 +264,46 @@ def on_open(_event):
         return
 
     state['image'] = img
+    state['_last_path'] = path
     # Zapisz kopię PNG
     cv2.imwrite(os.path.join(current_dir, 'obraz_kopiowany.png'), img)
 
-    # Odśwież podgląd
-    ax_img.cla()
-    ax_img.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-    ax_img.set_title(
-        f'Załadowany obraz: {os.path.basename(path)}',
-        color='white', fontsize=10, pad=6,
-    )
-    ax_img.axis('off')
-
-    # Odśwież histogram
-    redraw_histogram(ax_hist, img, state['color_space'])
+    # Odśwież podgląd i histogram
+    redraw_image(path)
+    redraw_histogram(ax_hist, current_display_image(), state['color_space'])
     fig.canvas.draw_idle()
 
 
 def on_radio(label):
     state['color_space'] = label
-    redraw_histogram(ax_hist, state['image'], label)
+    redraw_histogram(ax_hist, current_display_image(), label)
+    fig.canvas.draw_idle()
+
+
+def on_toggle_snp(_event):
+    state['noise'] = not state['noise']
+    if state['noise']:
+        btn_snp.label.set_text('Szum S&P: WŁ')
+        btn_snp.label.set_color('gold')
+        btn_snp.ax.set_facecolor('#4a3a00')
+    else:
+        btn_snp.label.set_text('Szum S&P: WYŁ')
+        btn_snp.label.set_color('#aaaaaa')
+        btn_snp.ax.set_facecolor('#3a3a3a')
+    redraw_image(state.get('_last_path'))
+    redraw_histogram(ax_hist, current_display_image(), state['color_space'])
+    fig.canvas.draw_idle()
+
+
+def on_rotation(val):
+    state['rotation'] = int(val)
+    redraw_image(state.get('_last_path'))
+    redraw_histogram(ax_hist, current_display_image(), state['color_space'])
     fig.canvas.draw_idle()
 
 
 btn.on_clicked(on_open)
 radio.on_clicked(on_radio)
+btn_snp.on_clicked(on_toggle_snp)
+rotation_slider.on_changed(on_rotation)
 plt.show()
