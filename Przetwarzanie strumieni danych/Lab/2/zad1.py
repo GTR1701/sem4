@@ -3,7 +3,9 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.widgets import RadioButtons
+from matplotlib.widgets import RadioButtons, Button
+import tkinter as tk
+from tkinter import filedialog
 
 filename = "gory.jpg"
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -12,6 +14,12 @@ image1 = cv2.imread(filepath)
 
 filepath2 = os.path.join(current_dir, 'obraz_kopiowany.png')
 cv2.imwrite(filepath2, image1)
+
+# Zmienna przechowująca aktualnie wyświetlany obraz i przestrzeń kolorów
+state = {
+    'image': image1,
+    'color_space': 'RGB',
+}
 
 COLOR_SPACES = ['RGB', 'aRGB', 'YCbCr', 'HSL']
 
@@ -123,6 +131,7 @@ def redraw_histogram(ax, image_bgr, color_space):
 
 fig = plt.figure(figsize=(15, 8), facecolor='#1a1a1a')
 
+# Siatka: 2 wiersze × 2 kolumny; prawa kolumna zawiera radio + przycisk
 gs = fig.add_gridspec(
     2, 2,
     width_ratios=[5.2, 1],
@@ -135,19 +144,24 @@ gs = fig.add_gridspec(
 
 ax_img  = fig.add_subplot(gs[0, 0])
 ax_hist = fig.add_subplot(gs[1, 0])
-ax_rb   = fig.add_subplot(gs[:, 1])   # radio zajmuje całą prawą kolumnę
+
+# Prawa kolumna: radio (górne 80%) + przycisk (dolne 20%)
+ax_rb  = fig.add_axes([0.875, 0.25, 0.105, 0.60], facecolor='#2a2a2a')
+ax_btn = fig.add_axes([0.860, 0.10, 0.125, 0.08])
 
 # --- Obraz ---
-image_rgb = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
+image_rgb = cv2.cvtColor(state['image'], cv2.COLOR_BGR2RGB)
 ax_img.imshow(image_rgb)
-ax_img.set_title('Załadowany obraz', color='white', fontsize=11, pad=6)
+ax_img.set_title(
+    f'Załadowany obraz: {os.path.basename(filepath)}',
+    color='white', fontsize=10, pad=6,
+)
 ax_img.axis('off')
 
 # --- Histogram (domyślnie RGB) ---
-redraw_histogram(ax_hist, image1, 'RGB')
+redraw_histogram(ax_hist, state['image'], state['color_space'])
 
 # --- Radio buttons ---
-ax_rb.set_facecolor('#2a2a2a')
 for spine in ax_rb.spines.values():
     spine.set_edgecolor('#555555')
 
@@ -157,11 +171,57 @@ for lbl in radio.labels:
     lbl.set_fontsize(11)
 ax_rb.set_title('Przestrzeń\nkolorów', color='white', fontsize=10, pad=10)
 
+# --- Przycisk wyboru pliku ---
+btn = Button(ax_btn, 'Wybierz obraz', color='#3a3a3a', hovercolor='#555555')
+btn.label.set_color('white')
+btn.label.set_fontsize(9)
 
-def on_radio(label):
-    redraw_histogram(ax_hist, image1, label)
+
+def on_open(_event):
+    # Ukryj okno matplotlib, otwórz dialog, przywróć focus
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes('-topmost', True)
+    path = filedialog.askopenfilename(
+        title='Wybierz obraz',
+        filetypes=[
+            ('Obrazy', '*.jpg *.jpeg *.png *.bmp *.tiff *.tif *.webp'),
+            ('Wszystkie pliki', '*.*'),
+        ],
+    )
+    root.destroy()
+
+    if not path:
+        return
+
+    img = cv2.imread(path)
+    if img is None:
+        return
+
+    state['image'] = img
+    # Zapisz kopię PNG
+    cv2.imwrite(os.path.join(current_dir, 'obraz_kopiowany.png'), img)
+
+    # Odśwież podgląd
+    ax_img.cla()
+    ax_img.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    ax_img.set_title(
+        f'Załadowany obraz: {os.path.basename(path)}',
+        color='white', fontsize=10, pad=6,
+    )
+    ax_img.axis('off')
+
+    # Odśwież histogram
+    redraw_histogram(ax_hist, img, state['color_space'])
     fig.canvas.draw_idle()
 
 
+def on_radio(label):
+    state['color_space'] = label
+    redraw_histogram(ax_hist, state['image'], label)
+    fig.canvas.draw_idle()
+
+
+btn.on_clicked(on_open)
 radio.on_clicked(on_radio)
 plt.show()
