@@ -9,6 +9,9 @@ def interactive_normal_timeseries():
     z suwakami do zmiany parametrów w czasie rzeczywistym
     """
     
+    # Zwiększenie rozmiaru czcionki
+    plt.rcParams.update({'font.size': 13})
+
     # Parametry początkowe
     initial_mean = 0.0
     initial_std = 1.0
@@ -19,9 +22,8 @@ def interactive_normal_timeseries():
     
     # Tworzenie layoutu z GridSpec
     fig = plt.figure(figsize=(14, 10))
-    # bottom=0.28 zostawia wyraźne miejsce poniżej wykresów na suwaki
     gs = gridspec.GridSpec(2, 2, figure=fig,
-                           left=0.1, right=0.95, top=0.95, bottom=0.28,
+                           left=0.1, right=0.95, top=0.95, bottom=0.46,
                            height_ratios=[1, 1], hspace=0.48, wspace=0.35)
     
     # Główne wykresy
@@ -65,27 +67,30 @@ def interactive_normal_timeseries():
     ax_pdf.grid(True, alpha=0.3)
     ax_pdf.legend()
     
-    # Tworzenie suwaków – pozycje poniżej bottom=0.28 (obszar wykresów)
+    # Tworzenie suwaków – ułożone jeden pod drugim (lewa/środkowa część)
     slider_height = 0.03
-    
-    # Suwak dla średniej (lewa kolumna, górny rząd)
-    ax_mean_slider = plt.axes([0.1, 0.19, 0.35, slider_height])
+    slider_left = 0.25
+    slider_width = 0.54
+
+    # Suwak dla średniej (górny)
+    ax_mean_slider = plt.axes([slider_left, 0.36, slider_width, slider_height])
     slider_mean = Slider(ax_mean_slider, 'Średnia (μ)', -5.0, 5.0,
                         valinit=initial_mean, valstep=0.1)
-    
-    # Suwak dla odchylenia standardowego (prawa kolumna, górny rząd)
-    ax_std_slider = plt.axes([0.55, 0.19, 0.35, slider_height])
-    slider_std = Slider(ax_std_slider, 'Odch. std. (σ)', 0.1, 5.0,
+
+    # Suwak dla odchylenia standardowego (środkowy)
+    ax_std_slider = plt.axes([slider_left, 0.27, slider_width, slider_height])
+    slider_std = Slider(ax_std_slider, 'Odchylenie standardowe (σ)', 0.1, 5.0,
                        valinit=initial_std, valstep=0.1)
-    
-    # Suwak dla liczby próbek (lewa kolumna, dolny rząd)
-    ax_size_slider = plt.axes([0.1, 0.08, 0.35, slider_height])
+
+    # Suwak dla liczby próbek (dolny)
+    ax_size_slider = plt.axes([slider_left, 0.18, slider_width, slider_height])
     slider_size = Slider(ax_size_slider, 'Liczba próbek', 100, 5000,
                         valinit=initial_size, valstep=100)
-    
-    # Text box dla wyświetlania statystyk (prawa kolumna, dolny rząd)
-    stats_text = plt.figtext(0.55, 0.05, '', fontsize=9,
-                           bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray"))
+
+    # Text box dla statystyk – po prawej stronie, obok suwaków
+    stats_text = plt.figtext(0.45, 0.03, '', fontsize=12,
+                           verticalalignment='bottom',
+                           bbox=dict(boxstyle="round,pad=0.4", facecolor="lightgray"))
     
     def update_plots(val=None):
         """Aktualizuje wszystkie wykresy po zmianie parametrów"""
@@ -144,10 +149,11 @@ Liczba próbek: {size}"""
     slider_mean.on_changed(update_plots)
     slider_std.on_changed(update_plots)
     slider_size.on_changed(update_plots)
-    
+
     # Początkowa aktualizacja statystyk
     update_plots()
-    
+
+    fig.canvas.manager.set_window_title('Rozkład normalny – interaktywny przebieg czasowy')
     plt.show()
 
 def compare_distributions():
@@ -186,15 +192,13 @@ def compare_distributions():
     ax2.set_ylabel('Gęstość prawdopodobieństwa')
     ax2.legend()
     ax2.grid(True, alpha=0.3)
-    
+
     plt.tight_layout()
+    fig.canvas.manager.set_window_title('Rozkłady normalne – porównanie')
     plt.show()
 
 if __name__ == "__main__":
     print("Generowanie przebiegów czasowych z rozkładu normalnego")
     print("="*60)
     
-    # Uruchomienie interaktywnego narzędzia
     interactive_normal_timeseries()
-    
-    print("\nAnalizę ukończono!")

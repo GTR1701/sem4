@@ -76,5 +76,6 @@ if __name__ == "__main__":
     button = Button(ax_button, 'Regeneruj')
     button.on_clicked(regenerate_noise)
 
+    fig.canvas.manager.set_window_title('Szum Browna 2D')
     plt.show()
     print("\nGenerowanie zakończone!")

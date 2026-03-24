@@ -3,7 +3,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.widgets import RadioButtons, Button, Slider
+from matplotlib.widgets import RadioButtons, Button, Slider, TextBox
 import tkinter as tk
 from tkinter import filedialog
 
@@ -20,7 +20,8 @@ state = {
     'image': image1,
     'color_space': 'RGB',
     'noise': False,         # czy szum sól i pieprz jest włączony
-    'noise_amount': 0.02,   # odsetek zaburzonych pikseli (2 %)
+    'noise_salt': 0.02,     # odsetek pikseli soli (2 %)
+    'noise_pepper': 0.02,   # odsetek pikseli pieprzu (2 %)
     'rotation': 0,          # kąt obrotu w stopniach
 }
 
@@ -33,23 +34,22 @@ X_LABELS = {
     'HSL':   'Wartość składowej (0–255)',
 }
 
-
-def add_salt_pepper(image_bgr, amount=0.02):
+def add_salt_pepper(image_bgr, salt_amount=0.02, pepper_amount=0.02):
     """Nakłada szum sól i pieprz – nie modyfikuje oryginału."""
     out = image_bgr.copy()
     total = image_bgr.size // image_bgr.shape[2]   # liczba pikseli
-    n = int(amount * total)
     rng = np.random.default_rng(seed=0)            # deterministyczny szum
     # Sól (białe piksele)
-    rows = rng.integers(0, image_bgr.shape[0], n)
-    cols = rng.integers(0, image_bgr.shape[1], n)
+    n_salt = int(salt_amount * total)
+    rows = rng.integers(0, image_bgr.shape[0], n_salt)
+    cols = rng.integers(0, image_bgr.shape[1], n_salt)
     out[rows, cols] = 255
     # Pieprz (czarne piksele)
-    rows = rng.integers(0, image_bgr.shape[0], n)
-    cols = rng.integers(0, image_bgr.shape[1], n)
+    n_pepper = int(pepper_amount * total)
+    rows = rng.integers(0, image_bgr.shape[0], n_pepper)
+    cols = rng.integers(0, image_bgr.shape[1], n_pepper)
     out[rows, cols] = 0
     return out
-
 
 def rotate_image(image_bgr, angle):
     """Obraca obraz o podany kąt (stopnie, CCW), rozszerza canvas."""
@@ -71,7 +71,7 @@ def current_display_image():
     """Zwraca obraz do wyświetlenia (obrót → szum)."""
     img = rotate_image(state['image'], state['rotation'])
     if state['noise']:
-        img = add_salt_pepper(img, state['noise_amount'])
+        img = add_salt_pepper(img, state['noise_salt'], state['noise_pepper'])
     return img
 
 
@@ -149,13 +149,13 @@ def redraw_histogram(ax, image_bgr, color_space):
 
     max_val = max(ch[1].max() for ch in channels) or 1.0
     normalized = [
-        (name, smooth_hist(vals / max_val), line_c, fill_c)
+        (name, vals / max_val, line_c, fill_c)
         for name, vals, line_c, fill_c in channels
     ]
 
     for name, vals, line_c, fill_c in normalized:
-        ax.fill_between(x, vals, alpha=0.40, color=fill_c, linewidth=0)
-        ax.plot(x, vals, color=line_c, linewidth=1.0, alpha=0.95)
+        ax.bar(x, vals, width=1.0, alpha=0.55, color=fill_c, linewidth=0)
+        ax.step(x, vals, where='mid', color=line_c, linewidth=0.8, alpha=0.95)
 
     ax.set_xlim(0, 255)
     ax.set_ylim(0, 1.08)
@@ -184,8 +184,14 @@ ax_slider = fig.add_axes([0.05, 0.36, 0.78, 0.04],               # suwak obrotu
 ax_hist   = fig.add_axes([0.05, 0.07, 0.78, 0.26])               # histogram
 ax_rb     = fig.add_axes([0.867, 0.35, 0.115, 0.58],             # radio
                          facecolor='#2a2a2a')
-ax_btn     = fig.add_axes([0.855, 0.22, 0.135, 0.07])            # wybierz obraz
-ax_btn_snp = fig.add_axes([0.855, 0.12, 0.135, 0.07])            # szum S&P
+ax_btn          = fig.add_axes([0.855, 0.22, 0.135, 0.07])       # wybierz obraz
+ax_btn_snp      = fig.add_axes([0.855, 0.12, 0.135, 0.07])       # szum S&P
+ax_slider_salt  = fig.add_axes([0.855, 0.075, 0.135, 0.033],     # suwak soli
+                               facecolor='#2a2a2a')
+ax_slider_pepper = fig.add_axes([0.855, 0.028, 0.135, 0.033],    # suwak pieprzu
+                                facecolor='#2a2a2a')
+ax_tb_save  = fig.add_axes([0.05, 0.010, 0.52, 0.052])           # pole nazwy pliku
+ax_btn_save = fig.add_axes([0.60, 0.008, 0.23, 0.056])           # przycisk zapisu
 
 def redraw_image(title_path=None):
     ax_img.cla()
@@ -240,6 +246,32 @@ btn.label.set_fontsize(9)
 btn_snp = Button(ax_btn_snp, 'Szum S&P: WYŁ', color='#3a3a3a', hovercolor='#555555')
 btn_snp.label.set_color('#aaaaaa')
 btn_snp.label.set_fontsize(9)
+
+# --- Suwak soli ---
+salt_slider = Slider(
+    ax_slider_salt, 'Sól', 0.0, 0.2,
+    valinit=0.02, valstep=0.001,
+    color='white',
+)
+salt_slider.label.set_color('white')
+salt_slider.label.set_fontsize(8)
+salt_slider.valtext.set_color('white')
+salt_slider.valtext.set_fontsize(8)
+for spine in ax_slider_salt.spines.values():
+    spine.set_edgecolor('#555555')
+
+# --- Suwak pieprzu ---
+pepper_slider = Slider(
+    ax_slider_pepper, 'Pieprz', 0.0, 0.2,
+    valinit=0.02, valstep=0.001,
+    color='#444444',
+)
+pepper_slider.label.set_color('white')
+pepper_slider.label.set_fontsize(8)
+pepper_slider.valtext.set_color('white')
+pepper_slider.valtext.set_fontsize(8)
+for spine in ax_slider_pepper.spines.values():
+    spine.set_edgecolor('#555555')
 
 
 def on_open(_event):
@@ -302,8 +334,58 @@ def on_rotation(val):
     fig.canvas.draw_idle()
 
 
+def on_salt(val):
+    state['noise_salt'] = val
+    if state['noise']:
+        redraw_image(state.get('_last_path'))
+        redraw_histogram(ax_hist, current_display_image(), state['color_space'])
+        fig.canvas.draw_idle()
+
+
+def on_pepper(val):
+    state['noise_pepper'] = val
+    if state['noise']:
+        redraw_image(state.get('_last_path'))
+        redraw_histogram(ax_hist, current_display_image(), state['color_space'])
+        fig.canvas.draw_idle()
+
+
+# --- Pole nazwy pliku ---
+tb_save = TextBox(ax_tb_save, 'Plik: ', initial='output.png',
+                  color='#2a2a2a', hovercolor='#3a3a3a')
+tb_save.label.set_color('white')
+tb_save.label.set_fontsize(12)
+tb_save.text_disp.set_color('white')
+tb_save.text_disp.set_fontsize(13)
+for spine in ax_tb_save.spines.values():
+    spine.set_edgecolor('#555555')
+
+# --- Przycisk zapisu ---
+btn_save = Button(ax_btn_save, 'Zapisz obraz', color='#1a3a1a', hovercolor='#2a5a2a')
+btn_save.label.set_color('lightgreen')
+btn_save.label.set_fontsize(9)
+
+
+def on_save(_event):
+    name = tb_save.text.strip() or 'output.png'
+    # Zapewnij rozszerzenie
+    if not os.path.splitext(name)[1]:
+        name += '.png'
+    save_dir = os.path.dirname(state.get('_last_path', filepath))
+    save_path = os.path.join(save_dir, name)
+    img_to_save = current_display_image()
+    cv2.imwrite(save_path, img_to_save)
+    fig.canvas.draw_idle()
+
+
+btn_save.on_clicked(on_save)
+
 btn.on_clicked(on_open)
 radio.on_clicked(on_radio)
 btn_snp.on_clicked(on_toggle_snp)
 rotation_slider.on_changed(on_rotation)
+salt_slider.on_changed(on_salt)
+pepper_slider.on_changed(on_pepper)
+
+fig.canvas.manager.set_window_title('Analiza histogramu obrazu')
 plt.show()

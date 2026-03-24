@@ -124,4 +124,5 @@ sl_lam.on_changed(update)
 sl_sig_ray.on_changed(update)
 
 fig.suptitle('Generatory szumów: Rician · Poisson · Rayleigh', fontsize=13, fontweight='bold')
+fig.canvas.manager.set_window_title('Szumy: Rician · Poisson · Rayleigh')
 plt.show()

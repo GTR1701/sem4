@@ -283,4 +283,5 @@ radio.on_clicked(on_signal_type_change)
 # Podłączenie przycisku do funkcji zapisywania
 save_button.on_clicked(lambda x: save_all())
 
+fig.canvas.manager.set_window_title('Generator sygnałów – interaktywny')
 plt.show()

@@ -122,6 +122,7 @@ def interactive_random_signal():
     radio.on_clicked(update)
 
     update()
+    fig.canvas.manager.set_window_title('Sygnał losowy – interaktywny')
     plt.show()
 
 
@@ -158,6 +159,8 @@ print(f"signal_randn_scaled: średnia={np.mean(signal_randn_scaled):.3f}, odchyl
 # Tworzenie wykresów
 fig, axes = plt.subplots(3, 2, figsize=(15, 12))
 fig.suptitle('Przebiegi czasowe i ich histogramy', fontsize=16)
+
+fig.canvas.manager.set_window_title('Przebiegi czasowe rand / randn')
 
 # 1. Signal rand - przebieg czasowy
 axes[0, 0].plot(time, signal_rand, 'b-', alpha=0.7, linewidth=0.8)
@@ -230,6 +233,8 @@ print(f"  Kwartyl 75%: {np.percentile(signal_randn, 75):.3f}")
 # Tworzenie oddzielnych wykresów dla bardziej szczegółowej analizy
 fig2, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 8))
 fig2.suptitle('Szczegółowa analiza histogramów', fontsize=14)
+
+fig2.canvas.manager.set_window_title('Szczegółowa analiza histogramów')
 
 # Histogram rand() z krzywą gęstości teoretycznej
 ax1.hist(signal_rand, bins=30, density=True, alpha=0.7, color='skyblue', edgecolor='black')
