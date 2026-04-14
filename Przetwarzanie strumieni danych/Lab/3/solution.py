@@ -77,7 +77,7 @@ initial_samples = 1000  # Liczba sampli
 t = np.linspace(0, initial_tmax, initial_samples)
 
 def psd_definition(x, fs):
-    """WGM z definicji Wienera-Chinczyna (ręczne całkowanie bez FFT):
+    """WGM z definicji:
        S_XX(f) = int_{-inf}^{inf} R_XX(tau) * e^{-j2pi*f*tau} dtau
     Numerycznie:
        S_XX(f) ≈ dt * sum_k R_XX[k] * e^{-j2pi * f * tau_k}

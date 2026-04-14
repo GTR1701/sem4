@@ -11,10 +11,10 @@ import os
 plt.rcParams.update({
     'font.size': 15,
     'axes.titlesize': 14,
-    'axes.labelsize': 13,
-    'xtick.labelsize': 11,
-    'ytick.labelsize': 11,
-    'legend.fontsize': 12,
+    'axes.labelsize': 15,
+    'xtick.labelsize': 15,
+    'ytick.labelsize': 15,
+    'legend.fontsize': 15,
 })
 
 fig = plt.figure(figsize=(14, 8))
@@ -77,7 +77,7 @@ initial_samples = 1000  # Liczba sampli
 t = np.linspace(0, initial_tmax, initial_samples)
 
 def psd_definition(x, fs):
-    """WGM z definicji Wienera-Chinczyna (ręczne całkowanie bez FFT):
+    """WGM z definicji:
        S_XX(f) = int_{-inf}^{inf} R_XX(tau) * e^{-j2pi*f*tau} dtau
     Numerycznie:
        S_XX(f) ≈ dt * sum_k R_XX[k] * e^{-j2pi * f * tau_k}
@@ -94,7 +94,7 @@ def psd_definition(x, fs):
     n_freqs = n // 2 + 1
     freqs = np.linspace(0, fs / 2, n_freqs)
 
-    # 3. Ręczne całkowanie: macierz faz (n_freqs x 2n-1), bez FFT
+    # 3. Ręczne całkowanie: macierz faz (n_freqs x 2n-1)
     #    kernel[i, k] = e^{-j2pi * freqs[i] * taus[k]}
     kernel = np.exp(-1j * 2 * np.pi * np.outer(freqs, taus))
 
@@ -518,12 +518,12 @@ radio = RadioButtons(ax_radio, ('sinus', 'cosinus', 'prostokątny', 'piłokszta�
 
 # --- Panel widma (domyślnie ukryty) ---
 ax_psd_method = plt.axes([0.10, 0.13, 0.28, 0.12])
-ax_psd_method.set_title('Metoda PSD', fontsize=9)
+ax_psd_method.set_title('Metoda PSD', fontsize=15)
 radio_psd = RadioButtons(ax_psd_method, ('periodogram', 'welch', 'definicja'))
 ax_psd_method.set_visible(False)
 
 ax_psd_scale = plt.axes([0.43, 0.13, 0.24, 0.12])
-ax_psd_scale.set_title('Skala osi Y', fontsize=9)
+ax_psd_scale.set_title('Skala osi Y', fontsize=15)
 radio_psd_scale = RadioButtons(ax_psd_scale, ('liniowa', 'logarytmiczna'))
 ax_psd_scale.set_visible(False)
 
