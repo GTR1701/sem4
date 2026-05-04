@@ -1,9 +1,13 @@
 from scipy import signal
+import scipy.fft as sp_fft
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, RadioButtons, Button, CheckButtons
 import pandas as pd
 import os
+import tkinter as tk
+import tkinter.font as tk_font
+from tkinter import filedialog as tk_filedialog
 
 #Zad 1
 
@@ -18,8 +22,8 @@ plt.rcParams.update({
 })
 
 fig = plt.figure(figsize=(14, 8))
-ax = fig.add_axes([0.06, 0.35, 0.30, 0.58])
-ax_psd = fig.add_axes([0.40, 0.35, 0.30, 0.58])
+ax = fig.add_axes([0.05, 0.38, 0.33, 0.57])
+ax_psd = fig.add_axes([0.41, 0.38, 0.33, 0.57])
 
 def load_signal_from_file(signal_type):
     """Ładuje parametry sygnału z pliku CSV jeśli istnieje"""
@@ -234,6 +238,146 @@ def save_all():
 
 _current_tab = 'signal'
 
+# Stan załadowanego sygnału z pliku CSV
+_loaded_signal = {'t': None, 'y': None, 'label': None}
+
+
+def _pick_time_amp_columns(df):
+    """Heurystycznie wybiera kolumny czasu i amplitudy z DataFrame."""
+    cols = list(df.columns)
+    time_keywords = ['czas', 'time', 't', 'x', 'sample', 'n', 'index']
+    amp_keywords = ['amplituda', 'amplitude', 'y', 'value', 'signal', 'data', 'a', 'v']
+    t_col = None
+    y_col = None
+    for kw in time_keywords:
+        for c in cols:
+            if kw in c.lower():
+                t_col = c
+                break
+        if t_col:
+            break
+    for kw in amp_keywords:
+        for c in cols:
+            if kw in c.lower() and c != t_col:
+                y_col = c
+                break
+        if y_col:
+            break
+    if t_col is None and len(cols) >= 1:
+        t_col = cols[0]
+    if y_col is None and len(cols) >= 2:
+        y_col = cols[1]
+    elif y_col is None and len(cols) == 1:
+        y_col = cols[0]
+        t_col = None
+    return t_col, y_col
+
+
+def _plot_loaded_spectrum():
+    """Rysuje sygnał z pliku (lewy wykres) oraz jego widmo FFT (prawy wykres)."""
+    global line, line_env_pos, line_env_neg
+    t_data = _loaded_signal['t']
+    y_data = _loaded_signal['y']
+    label = _loaded_signal['label']
+    if y_data is None:
+        return
+
+    # Lewy wykres: przebieg sygnału
+    ax.cla()
+    ax.grid(True, alpha=0.3)
+    ax.plot(t_data, y_data, 'b-', linewidth=1.5)
+    ax.set_xlabel('Czas [s]' if (t_data[-1] - t_data[0]) < len(t_data) else 'Próbka')
+    ax.set_ylabel('Amplituda')
+    ax.set_title(f'Sygnał z pliku: {label}')
+    # Odtwórz obiekty line żeby update() nie crashował po powrocie do zakładki Sygnał
+    line, = ax.plot([], [], visible=False)
+    line_env_pos, = ax.plot([], [], visible=False)
+    line_env_neg, = ax.plot([], [], visible=False)
+
+    # Prawy wykres: jednostronne widmo amplitudowe FFT (scipy.fft)
+    N = len(y_data)
+    dt = float(t_data[1] - t_data[0]) if len(t_data) > 1 else 1.0
+    fs_csv = 1.0 / dt if dt > 0 else float(N)
+    X = sp_fft.rfft(y_data)
+    freqs = sp_fft.rfftfreq(N, d=dt)
+    amplitude = np.abs(X) * 2.0 / N
+    amplitude[0] /= 2.0
+    if N % 2 == 0:
+        amplitude[-1] /= 2.0
+    ax_psd.cla()
+    ax_psd.grid(True, alpha=0.3)
+    if len(freqs) > 400:
+        ax_psd.plot(freqs, amplitude, 'g-', linewidth=1.5)
+    else:
+        ax_psd.vlines(freqs, 0, amplitude, colors='g', linewidth=1.2)
+        ax_psd.plot(freqs, amplitude, 'go', markersize=4)
+    ax_psd.set_xlabel('Częstotliwość [Hz]')
+    ax_psd.set_ylabel('Amplituda')
+    ax_psd.set_xlim(0, fs_csv / 2)
+    a_max = float(np.max(amplitude)) if np.max(amplitude) > 0 else 1.0
+    ax_psd.set_ylim(0, a_max * 1.15)
+    ax_psd.set_title(f'Widmo amplitudowe — scipy.fft | N={N} | fs≈{fs_csv:.1f} Hz')
+    fig.canvas.draw_idle()
+
+
+def load_csv_signal(event=None):
+    """Otwiera dialog wyboru pliku CSV i rysuje sygnał + widmo."""
+    root = tk.Tk()
+    # Skalowanie musi być ustawione PRZED withdraw() i dialogiem
+    root.tk.call('tk', 'scaling', 2.0)
+    # Powiększ wszystkie named fonts (jedyna metoda działająca na Linuksie)
+    _DIALOG_FONT_SIZE = 14
+    for fname in ('TkDefaultFont', 'TkTextFont', 'TkFixedFont',
+                  'TkMenuFont', 'TkHeadingFont', 'TkCaptionFont',
+                  'TkSmallCaptionFont', 'TkIconFont', 'TkTooltipFont'):
+        try:
+            tk_font.nametofont(fname).configure(size=_DIALOG_FONT_SIZE)
+        except Exception:
+            pass
+    root.withdraw()
+    root.attributes('-topmost', True)
+    filepath = tk_filedialog.askopenfilename(
+        title='Wybierz plik CSV z sygnałem',
+        filetypes=[('CSV files', '*.csv'), ('Text files', '*.txt *.tsv'), ('All files', '*.*')]
+    )
+    root.destroy()
+    if not filepath:
+        return
+    try:
+        df = None
+        for sep in (',', ';', '\t', ' '):
+            try:
+                tmp = pd.read_csv(filepath, sep=sep)
+                if tmp.shape[1] >= 1:
+                    df = tmp
+                    break
+            except Exception:
+                continue
+        if df is None:
+            print(f'[Załaduj CSV] Nie udało się wczytać pliku: {filepath}')
+            return
+        df = df.apply(pd.to_numeric, errors='coerce').dropna()
+        if df.empty:
+            print(f'[Załaduj CSV] Plik {filepath} nie zawiera danych numerycznych.')
+            return
+        t_col, y_col = _pick_time_amp_columns(df)
+        y_data = df[y_col].to_numpy(dtype=float)
+        if t_col and t_col != y_col:
+            t_data = df[t_col].to_numpy(dtype=float)
+        else:
+            t_data = np.arange(len(y_data), dtype=float)
+        if len(y_data) < 4:
+            print('[Załaduj CSV] Za mało próbek (minimum 4).')
+            return
+        _loaded_signal['t'] = t_data
+        _loaded_signal['y'] = y_data
+        _loaded_signal['label'] = os.path.basename(filepath)
+        print(f'[Załaduj CSV] Załadowano {len(y_data)} próbek z: {filepath}')
+        print(f'             Kolumna czasu: {t_col}, kolumna amplitudy: {y_col}')
+        _plot_loaded_spectrum()
+    except Exception as e:
+        print(f'[Załaduj CSV] Błąd wczytywania pliku: {e}')
+
 
 def quantize(y, bits, amp):
     """Kwantyzacja sygnału do zadanej liczby bitów."""
@@ -341,6 +485,77 @@ def reconstruct(t_out, t_s, y_s, method):
             t_s_w, y_s_w = t_s, y_s
         return whittaker_shannon(t_out, t_s_w, y_s_w)
     return np.zeros(len(t_out))
+
+
+_WINDOW_COLORS = ['tab:blue', 'tab:red', 'tab:green', 'tab:orange']
+_WINDOW_NAMES = ['Hamming', 'Hann', 'Blackman', 'Dirichlet']
+
+
+def _make_window(name, N):
+    """Zwraca funkcję okna z SciPy dla zadanej długości N."""
+    if name == 'Hamming':
+        return signal.windows.hamming(N)
+    elif name == 'Hann':
+        return signal.windows.hann(N)
+    elif name == 'Blackman':
+        return signal.windows.blackman(N)
+    else:  # Dirichlet (prostokątne)
+        return signal.windows.boxcar(N)
+
+
+def update_windows_plot():
+    """Rysuje okna nałożone na aktualny sygnał oraz ich widma amplitudowe."""
+    N = int(slider_window_N.val)
+    selected = check_windows.get_status()  # [Hamming, Hann, Blackman, Dirichlet]
+    n_fft = 4096
+
+    # Pobierz aktualny sygnał z suwaków (przycięty do N próbek)
+    freq = slider_freq.val
+    amp = slider_amp.val
+    phase = slider_phase.val
+    tmax = slider_tmax.val
+    impulse_pos = slider_impulse_pos.val
+    signal_type = radio.value_selected
+    t_win = np.linspace(0, tmax, N)
+    y_sig = generate_signal(t_win, signal_type, freq, amp, phase, impulse_pos)
+    fs_win = N / tmax
+
+    ax.cla()
+    ax.set_title(f'Sygnał z nałożonym oknem (N={N}, sygnał: {signal_type})')
+    ax.set_xlabel('Czas [s]')
+    ax.set_ylabel('Amplituda')
+    ax.set_xlim(0, tmax)
+    ax.grid(True, alpha=0.3)
+    # Sygnał oryginalny (tło)
+    ax.plot(t_win, y_sig, color='gray', linewidth=1.2, alpha=0.45, label='Sygnał')
+
+    ax_psd.cla()
+    ax_psd.set_title('Widmo amplitudowe sygnału z oknem')
+    ax_psd.set_xlabel('Częstotliwość [Hz]')
+    ax_psd.set_ylabel('Amplituda [dB]')
+    freqs_hz = np.fft.rfftfreq(n_fft, d=1.0 / fs_win)
+    ax_psd.set_xlim(0, min(fs_win / 2, float(slider_freq_zoom.val) * 5))
+    ax_psd.set_ylim(-120, 5)
+    ax_psd.grid(True, alpha=0.3)
+
+    any_visible = False
+    for i, name in enumerate(_WINDOW_NAMES):
+        if not selected[i]:
+            continue
+        any_visible = True
+        win = _make_window(name, N)
+        y_windowed = y_sig * win
+        ax.plot(t_win, y_windowed, color=_WINDOW_COLORS[i], linewidth=1.8, label=name)
+        W = np.fft.rfft(y_windowed, n=n_fft)
+        W_max = np.max(np.abs(W))
+        amp_db = 20.0 * np.log10(np.abs(W) / max(W_max, 1e-12) + 1e-15)
+        ax_psd.plot(freqs_hz, amp_db, color=_WINDOW_COLORS[i], linewidth=1.5, label=name)
+
+    if any_visible:
+        ax.legend(loc='upper right', fontsize=11)
+        ax_psd.legend(loc='upper right', fontsize=11)
+
+    fig.canvas.draw_idle()
 
 
 def update_sampling_plot():
@@ -547,6 +762,46 @@ def update_psd_plot(y_new, fs_current):
         ax_psd.set_title(f'Widmo fazowe (FFT) | N={N}')
         return
 
+    if psd_method == 'FFT':
+        # Jednostronne widmo amplitudowe: scipy.fft.rfft (tylko f >= 0)
+        N = len(y_new)
+        X = sp_fft.rfft(y_new)              # N//2+1 próbek, f >= 0
+        freqs_pos = sp_fft.rfftfreq(N, d=1.0 / fs_current)
+        amplitude = np.abs(X) * 2.0 / N    # podwojenie dla zachowania energii
+        amplitude[0] /= 2.0                 # DC — nie podwajamy
+        if N % 2 == 0:
+            amplitude[-1] /= 2.0            # składowa Nyquista — nie podwajamy
+        f_max = float(slider_freq_zoom.val)
+        mask = freqs_pos <= f_max
+        f_vis = freqs_pos[mask]
+        a_vis = amplitude[mask]
+        ax_psd.set_xlabel('Częstotliwość [Hz]')
+        ax_psd.set_xlim(0, f_max)
+        a_max = float(np.max(a_vis)) if len(a_vis) > 0 and np.max(a_vis) > 0 else 1.0
+        if psd_scale == 'dB':
+            a_db = 20.0 * np.log10(np.maximum(a_vis, 1e-12))
+            db_max = float(np.max(a_db))
+            ax_psd.plot(f_vis, a_db, 'g-', linewidth=1.5)
+            ax_psd.set_ylabel('Amplituda [dB]')
+            ax_psd.set_yscale('linear')
+            ax_psd.set_ylim(db_max - 80.0, db_max + 6.0)
+        elif psd_scale == 'logarytmiczna':
+            ax_psd.plot(f_vis, a_vis, 'g-', linewidth=1.5)
+            ax_psd.set_ylabel('Amplituda')
+            ax_psd.set_yscale('log')
+            ax_psd.set_ylim(max(a_max * 1e-6, 1e-12), a_max * 10)
+        else:
+            if len(f_vis) > 200:
+                ax_psd.plot(f_vis, a_vis, 'g-', linewidth=1.5)
+            else:
+                ax_psd.vlines(f_vis, 0, a_vis, colors='g', linewidth=1.2)
+                ax_psd.plot(f_vis, a_vis, 'go', markersize=4)
+            ax_psd.set_ylabel('Amplituda')
+            ax_psd.set_yscale('linear')
+            ax_psd.set_ylim(0, a_max * 1.15)
+        ax_psd.set_title(f'Widmo amplitudowe — scipy.fft (jednostronne) | N={N}')
+        return
+
     if psd_method == 'periodogram':
         freqs, psd = signal.periodogram(y_new, fs_current)
     elif psd_method == 'welch':
@@ -592,97 +847,123 @@ ax.grid(True, alpha=0.3)
 psd_line = None
 
 # --- Panel sygnału: slidery ---
-ax_freq = plt.axes([0.15, 0.25, 0.50, 0.03])
+ax_freq = plt.axes([0.20, 0.25, 0.45, 0.03])
 slider_freq = Slider(ax_freq, 'Częstotliwość', 0.1, 10.0, valinit=initial_freq, valstep=0.1)
 
-ax_amp = plt.axes([0.15, 0.20, 0.50, 0.03])
+ax_amp = plt.axes([0.20, 0.20, 0.45, 0.03])
 slider_amp = Slider(ax_amp, 'Amplituda', 0.1, 3.0, valinit=initial_amp, valstep=0.1)
 
-ax_phase = plt.axes([0.15, 0.15, 0.50, 0.03])
+ax_phase = plt.axes([0.20, 0.15, 0.45, 0.03])
 slider_phase = Slider(ax_phase, 'Faza', 0, 2*np.pi, valinit=initial_phase, valstep=0.1)
 
-ax_tmax = plt.axes([0.15, 0.10, 0.50, 0.03])
+ax_tmax = plt.axes([0.20, 0.10, 0.45, 0.03])
 slider_tmax = Slider(ax_tmax, 'Zakres czasu', 1.0, 20.0, valinit=initial_tmax, valstep=0.5)
 
-ax_impulse_pos = plt.axes([0.15, 0.05, 0.50, 0.03])
+ax_impulse_pos = plt.axes([0.20, 0.05, 0.45, 0.03])
 slider_impulse_pos = Slider(ax_impulse_pos, 'Pozycja impulsu', 0.0, initial_tmax, valinit=initial_impulse_position, valstep=0.1)
 
-ax_samples = plt.axes([0.15, 0.00, 0.50, 0.03])
+ax_samples = plt.axes([0.20, 0.00, 0.45, 0.03])
 slider_samples = Slider(ax_samples, 'Liczba sampli', 100, 5000, valinit=initial_samples, valstep=100)
 
-ax_envelope_check = plt.axes([0.84, 0.37, 0.08, 0.06])
+# Envelope checkbox — right strip, above save button, part of signal panel
+ax_envelope_check = plt.axes([0.80, 0.49, 0.15, 0.07])
 check_envelope = CheckButtons(ax_envelope_check, ['Obwiednia'], [False])
 
 # --- Panel sygnału: typ sygnału ---
-ax_radio = plt.axes([0.74, 0.02, 0.21, 0.25])
+# Radio at right, below right strip, y=0.02..0.30 (no x overlap with sliders 0.06..0.69)
+ax_radio = plt.axes([0.70, 0.02, 0.24, 0.28])
 radio = RadioButtons(ax_radio, ('sinus', 'cosinus', 'prostokątny', 'piłokształtny', 'chirp', 'superpozycja', 'impuls jednostkowy', 'trójkątny', 'szum biały', 'szum browna', 'szum fioletowy'))
 
 # --- Panel widma (domyślnie ukryty) ---
-ax_psd_method = plt.axes([0.10, 0.05, 0.28, 0.24])
+# Metoda: x=0.06..0.28  (left column)
+ax_psd_method = plt.axes([0.06, 0.01, 0.22, 0.28])
 ax_psd_method.set_title('Metoda', fontsize=15)
-radio_psd = RadioButtons(ax_psd_method, ('periodogram', 'welch', 'definicja', 'widmo ampl.', 'widmo faz.'))
+radio_psd = RadioButtons(ax_psd_method, ('periodogram', 'welch', 'definicja', 'widmo ampl.', 'widmo faz.', 'FFT'))
 ax_psd_method.set_visible(False)
 
-ax_psd_scale = plt.axes([0.43, 0.13, 0.24, 0.12])
+# Skala: x=0.31..0.53  (center, above zoom)
+ax_psd_scale = plt.axes([0.31, 0.14, 0.22, 0.14])
 ax_psd_scale.set_title('Skala osi Y', fontsize=15)
 radio_psd_scale = RadioButtons(ax_psd_scale, ('liniowa', 'logarytmiczna', 'dB'))
 ax_psd_scale.set_visible(False)
 
-ax_freq_zoom = plt.axes([0.15, 0.04, 0.50, 0.03])
+# Zoom slider: x=0.31..0.71  (center-right, below Skala)
+ax_freq_zoom = plt.axes([0.40, 0.05, 0.40, 0.03])
 slider_freq_zoom = Slider(ax_freq_zoom, 'Zoom częst. [Hz]', 0.5, 200.0, valinit=10.0, valstep=0.5)
 ax_freq_zoom.set_visible(False)
 
 # --- Panel próbkowania (domyślnie ukryty) ---
-ax_fs_sample = plt.axes([0.15, 0.25, 0.50, 0.03])
+ax_fs_sample = plt.axes([0.20, 0.22, 0.45, 0.03])
 slider_fs_sample = Slider(ax_fs_sample, 'Częst. próbkowania [Hz]', 1.0, 500.0,
                            valinit=50.0, valstep=1.0)
 ax_fs_sample.set_visible(False)
 
-ax_bits = plt.axes([0.15, 0.20, 0.50, 0.03])
+ax_bits = plt.axes([0.20, 0.16, 0.45, 0.03])
 slider_bits = Slider(ax_bits, 'Bity kwantyzacji', 1, 16, valinit=8, valstep=1)
 ax_bits.set_visible(False)
 
-ax_lp_cutoff = plt.axes([0.15, 0.15, 0.50, 0.03])
+ax_lp_cutoff = plt.axes([0.20, 0.10, 0.45, 0.03])
 slider_lp_cutoff = Slider(ax_lp_cutoff, 'Filtr anty-aliasingowy [Hz]', 0.5, 250.0,
                            valinit=25.0, valstep=0.5)
 ax_lp_cutoff.set_visible(False)
 
-ax_recon_method = plt.axes([0.73, 0.02, 0.13, 0.25])
+ax_recon_method = plt.axes([0.70, 0.04, 0.14, 0.24])
 ax_recon_method.set_title('Rekonstrukcja', fontsize=13)
 radio_recon = RadioButtons(ax_recon_method, ('brak', 'ZOH', 'liniowa', 'sinc', 'W-S'))
 ax_recon_method.set_visible(False)
 
-ax_sampling_view = plt.axes([0.87, 0.02, 0.12, 0.25])
+ax_sampling_view = plt.axes([0.86, 0.04, 0.12, 0.24])
 ax_sampling_view.set_title('Widok', fontsize=13)
 radio_sampling_view = RadioButtons(ax_sampling_view, ('przebieg', 'widmo', 'błąd'))
 ax_sampling_view.set_visible(False)
 
 # --- Przyciski przełączające panele ---
-ax_tab_signal = plt.axes([0.73, 0.29, 0.08, 0.04])
+# 4 tabs, equally spaced in right strip x=0.77..0.99, y=0.33..0.37
+ax_tab_signal = plt.axes([0.770, 0.33, 0.049, 0.04])
 btn_tab_signal = Button(ax_tab_signal, 'Sygnał', color='lightblue', hovercolor='deepskyblue')
 
-ax_tab_spectral = plt.axes([0.82, 0.29, 0.08, 0.04])
+ax_tab_spectral = plt.axes([0.821, 0.33, 0.049, 0.04])
 btn_tab_spectral = Button(ax_tab_spectral, 'Widmo', color='lightgray', hovercolor='silver')
 
-ax_tab_sampling = plt.axes([0.91, 0.29, 0.08, 0.04])
+ax_tab_sampling = plt.axes([0.872, 0.33, 0.049, 0.04])
 btn_tab_sampling = Button(ax_tab_sampling, 'Próbkowanie', color='lightgray', hovercolor='silver')
 
+ax_tab_windows = plt.axes([0.923, 0.33, 0.049, 0.04])
+btn_tab_windows = Button(ax_tab_windows, 'Okna', color='lightgray', hovercolor='silver')
+
+# --- Panel okien (domyślnie ukryty) ---
+ax_window_N = plt.axes([0.20, 0.22, 0.45, 0.03])
+slider_window_N = Slider(ax_window_N, 'Długość okna N', 16, 1024, valinit=256, valstep=16)
+ax_window_N.set_visible(False)
+
+ax_window_check = plt.axes([0.70, 0.03, 0.24, 0.26])
+ax_window_check.set_title('Okna', fontsize=15)
+check_windows = CheckButtons(ax_window_check, ['Hamming', 'Hann', 'Blackman', 'Dirichlet'],
+                             [True, True, True, True])
+ax_window_check.set_visible(False)
+
 # --- Przycisk zapisywania (zawsze widoczny) ---
-ax_save_button = plt.axes([0.73, 0.38, 0.10, 0.04])
+ax_save_button = plt.axes([0.80, 0.41, 0.10, 0.04])
 save_button = Button(ax_save_button, 'Zapisz')
+
+# --- Przycisk ładowania CSV (zawsze widoczny) ---
+ax_load_button = plt.axes([0.80, 0.57, 0.10, 0.04])
+load_button = Button(ax_load_button, 'Załaduj CSV', color='lightyellow', hovercolor='khaki')
 
 _signal_panel_axes = [ax_freq, ax_amp, ax_phase, ax_tmax, ax_impulse_pos, ax_samples, ax_radio, ax_envelope_check]
 _spectral_panel_axes = [ax_psd_method, ax_psd_scale, ax_freq_zoom]
 _sampling_panel_axes = [ax_fs_sample, ax_bits, ax_lp_cutoff, ax_recon_method, ax_sampling_view]
+_windows_panel_axes = [ax_window_N, ax_window_check]
 
 # Zapamiętaj oryginalne pozycje (przed jakimkolwiek przesunięciem)
 _offscreen = [-2.0, -2.0, 0.01, 0.01]
 _signal_positions = {a: list(a.get_position().bounds) for a in _signal_panel_axes}
 _spectral_positions = {a: list(a.get_position().bounds) for a in _spectral_panel_axes}
 _sampling_positions = {a: list(a.get_position().bounds) for a in _sampling_panel_axes}
+_windows_positions = {a: list(a.get_position().bounds) for a in _windows_panel_axes}
 
 def _apply_panel(show_list, show_pos):
-    all_axes = _signal_panel_axes + _spectral_panel_axes + _sampling_panel_axes
+    all_axes = _signal_panel_axes + _spectral_panel_axes + _sampling_panel_axes + _windows_panel_axes
     for a in all_axes:
         a.set_position(_offscreen)
         a.set_visible(False)
@@ -691,7 +972,7 @@ def _apply_panel(show_list, show_pos):
         a.set_visible(True)
 
 def _set_tab_colors(active_btn):
-    for btn in (btn_tab_signal, btn_tab_spectral, btn_tab_sampling):
+    for btn in (btn_tab_signal, btn_tab_spectral, btn_tab_sampling, btn_tab_windows):
         color = 'lightblue' if btn is active_btn else 'lightgray'
         btn.color = color
         btn.ax.set_facecolor(color)
@@ -720,6 +1001,14 @@ def show_sampling_panel(event=None):
     update(None)
     fig.canvas.draw_idle()
 
+def show_windows_panel(event=None):
+    global _current_tab
+    _current_tab = 'windows'
+    _apply_panel(_windows_panel_axes, _windows_positions)
+    _set_tab_colors(btn_tab_windows)
+    update_windows_plot()
+    fig.canvas.draw_idle()
+
 # Funkcja do ładowania parametrów przy zmianie typu sygnału
 def on_signal_type_change(label):
     loaded_params = load_signal_from_file(label)
@@ -736,6 +1025,7 @@ def on_signal_type_change(label):
 
 # Funkcja update
 def update(val):
+    global line, line_env_pos, line_env_neg
     freq = slider_freq.val
     amp = slider_amp.val
     phase = slider_phase.val
@@ -752,27 +1042,37 @@ def update(val):
     t_new = np.linspace(0, tmax, samples)
     y_new = generate_signal(t_new, signal_type, freq, amp, phase, impulse_pos)
 
-    line.set_data(t_new, y_new)
-    ax.set_xlim(0, tmax)
-    if signal_type == 'impuls jednostkowy':
-        ax.set_ylim(-0.1 * amp, amp * 1.2)
-    else:
-        ax.set_ylim(-amp * 2.5, amp * 2.5)
-    ax.set_title(f'Wykres sygnału: {signal_type}')
+    if _current_tab != 'windows':
+        # Po wyjściu z zakładki Okna ax.cla() odłącza line — odtwórz go
+        if line.axes is None:
+            ax.cla()
+            ax.grid(True, alpha=0.3)
+            line, = ax.plot([], [], 'b-', linewidth=2)
+            line_env_pos, = ax.plot([], [], 'r--', linewidth=1.5, alpha=0.75)
+            line_env_neg, = ax.plot([], [], 'r--', linewidth=1.5, alpha=0.75)
+        line.set_data(t_new, y_new)
+        ax.set_xlim(0, tmax)
+        if signal_type == 'impuls jednostkowy':
+            ax.set_ylim(-0.1 * amp, amp * 1.2)
+        else:
+            ax.set_ylim(-amp * 2.5, amp * 2.5)
+        ax.set_title(f'Wykres sygnału: {signal_type}')
 
-    show_env = check_envelope.get_status()[0]
-    if show_env:
-        env = np.abs(signal.hilbert(y_new))
-        line_env_pos.set_data(t_new, env)
-        line_env_neg.set_data(t_new, -env)
-        line_env_pos.set_visible(True)
-        line_env_neg.set_visible(True)
-    else:
-        line_env_pos.set_visible(False)
-        line_env_neg.set_visible(False)
+        show_env = check_envelope.get_status()[0]
+        if show_env:
+            env = np.abs(signal.hilbert(y_new))
+            line_env_pos.set_data(t_new, env)
+            line_env_neg.set_data(t_new, -env)
+            line_env_pos.set_visible(True)
+            line_env_neg.set_visible(True)
+        else:
+            line_env_pos.set_visible(False)
+            line_env_neg.set_visible(False)
 
     if _current_tab == 'sampling':
         update_sampling_plot()
+    elif _current_tab == 'windows':
+        update_windows_plot()
     else:
         update_psd_plot(y_new, samples / tmax)
     fig.canvas.draw_idle()
@@ -789,9 +1089,14 @@ radio_psd.on_clicked(update)
 radio_psd_scale.on_clicked(update)
 
 save_button.on_clicked(save_all)
+load_button.on_clicked(load_csv_signal)
 btn_tab_signal.on_clicked(show_signal_panel)
 btn_tab_spectral.on_clicked(show_spectral_panel)
 btn_tab_sampling.on_clicked(show_sampling_panel)
+btn_tab_windows.on_clicked(show_windows_panel)
+
+slider_window_N.on_changed(lambda val: update_windows_plot())
+check_windows.on_clicked(lambda label: update_windows_plot())
 
 slider_fs_sample.on_changed(update)
 slider_freq_zoom.on_changed(update)
