@@ -37,9 +37,7 @@ for N in sizes:
     elapsed = end - start
     print(f"N = {N:5d}  czas: {elapsed:.4f} s")
 
-
-# ── Zadanie 2: FFT (Cooley–Tukey, rekurencyjny) ──────────────────────────────
-
+# Zad 2
 def fft(samples):
     N = len(samples)
 
@@ -95,8 +93,7 @@ for k in range(N):
 print(f"Maksymalna różnica DFT vs FFT (N={N}): {max_error:.2e}")
 
 
-# ── Zadanie 3: Szybkie mnożenie wielomianów przez FFT ────────────────────────
-
+#Zad 3
 def ifft(samples):
     N = len(samples)
 
@@ -181,8 +178,7 @@ for deg in degrees:
 
     print(f"stopień {deg:4d}  naive: {t_naive:.5f} s   FFT: {t_fft:.5f} s")
 
-
-# ── Zadanie 4: Analiza wydajności – wykres ────────────────────────────────────
+# Zad 4
 import matplotlib.pyplot as plt
 
 # --- pomiar DFT i FFT (transformacja sygnału) ---
@@ -218,19 +214,18 @@ for deg in poly_sizes:
     poly_multiply_fft(a, b)
     times_poly_fft.append(time.time() - start)
 
-# --- wykres ---
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
 
-ax1.plot(signal_sizes, times_dft,       marker='o', label='DFT – O(n²)')
-ax1.plot(signal_sizes, times_fft,       marker='s', label='FFT – O(n log n)')
+ax1.plot(signal_sizes, times_dft,       marker='o', label='DFT - O(n²)')
+ax1.plot(signal_sizes, times_fft,       marker='s', label='FFT - O(n log n)')
 ax1.set_title('Transformacja sygnału: DFT vs FFT')
 ax1.set_xlabel('Rozmiar sygnału N')
 ax1.set_ylabel('Czas [s]')
 ax1.legend()
 ax1.grid(True)
 
-ax2.plot(poly_sizes, times_poly_naive,  marker='o', label='Mnożenie naiwne – O(n²)')
-ax2.plot(poly_sizes, times_poly_fft,    marker='s', label='Mnożenie FFT – O(n log n)')
+ax2.plot(poly_sizes, times_poly_naive,  marker='o', label='Mnożenie naiwne - O(n²)')
+ax2.plot(poly_sizes, times_poly_fft,    marker='s', label='Mnożenie FFT - O(n log n)')
 ax2.set_title('Mnożenie wielomianów: naiwne vs FFT')
 ax2.set_xlabel('Stopień wielomianu')
 ax2.set_ylabel('Czas [s]')
@@ -238,18 +233,16 @@ ax2.legend()
 ax2.grid(True)
 
 plt.tight_layout()
-plt.savefig('wydajnosc.png', dpi=120)
 plt.show()
-print("Wykres zapisany jako wydajnosc.png")
 
-# Algorytmy O(n²) (DFT, naiwne mnożenie) rosną kwadratowo – podwojenie N
+# Algorytmy O(n²) (DFT, naiwne mnożenie) rosną kwadratowo - podwojenie N
 # czterokrotnie wydłuża czas. Algorytmy O(n log n) (FFT, mnożenie przez FFT)
 # rosną znacznie wolniej: podwojenie N tylko nieco ponad dwukrotnie zwiększa
 # czas. Dla małych N różnica jest niewidoczna lub FFT jest nawet wolniejsze
 # (narzut rekurencji), ale dla dużych N przewaga FFT jest bardzo wyraźna.
 
 
-# ── Zadanie 5: Rekonstrukcja i filtracja sygnału z użyciem FFT ───────────────
+# Zad 5
 
 # 1. Parametry sygnału
 fs = 128        # częstotliwość próbkowania [Hz]
@@ -308,7 +301,7 @@ if user_input:
         except ValueError:
             pass
 
-# 4. Filtracja – zerowanie wybranych binów (+ sprzężone lustrzane)
+# 4. Filtracja - zerowanie wybranych binów (+ sprzężone lustrzane)
 filtered_spectrum = list(spectrum5)
 for k in bins_to_zero:
     if 0 <= k < N5:
@@ -331,7 +324,7 @@ signal_reconstructed = [x.real for x in reconstructed_complex]
 
 # 6. Wykresy (2x2)
 fig5, axes = plt.subplots(2, 2, figsize=(13, 8))
-fig5.suptitle('Zadanie 5 – Filtracja sygnału z użyciem FFT')
+fig5.suptitle('Zadanie 5 - Filtracja sygnału z użyciem FFT')
 
 axes[0, 0].plot(t_values, signal5, color='steelblue')
 axes[0, 0].set_title('Sygnał oryginalny')
@@ -340,13 +333,13 @@ axes[0, 0].set_ylabel('Amplituda')
 axes[0, 0].grid(True)
 
 axes[0, 1].stem(freqs, amplitudes_orig)
-axes[0, 1].set_title('Widmo amplitudowe – oryginał')
+axes[0, 1].set_title('Widmo amplitudowe - oryginał')
 axes[0, 1].set_xlabel('Częstotliwość [Hz]')
 axes[0, 1].set_ylabel('Amplituda')
 axes[0, 1].grid(True)
 
 axes[1, 0].stem(freqs, amplitudes_filt)
-axes[1, 0].set_title('Widmo amplitudowe – po filtracji')
+axes[1, 0].set_title('Widmo amplitudowe - po filtracji')
 axes[1, 0].set_xlabel('Częstotliwość [Hz]')
 axes[1, 0].set_ylabel('Amplituda')
 axes[1, 0].grid(True)
@@ -358,6 +351,4 @@ axes[1, 1].set_ylabel('Amplituda')
 axes[1, 1].grid(True)
 
 plt.tight_layout()
-plt.savefig('filtracja.png', dpi=120)
 plt.show()
-print("Wykres zapisany jako filtracja.png")
