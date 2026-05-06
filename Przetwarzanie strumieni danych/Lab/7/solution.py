@@ -8,6 +8,7 @@ import os
 import tkinter as tk
 import tkinter.font as tk_font
 from tkinter import filedialog as tk_filedialog
+import pywt
 
 #Zad 1
 
@@ -24,6 +25,18 @@ plt.rcParams.update({
 fig = plt.figure(figsize=(14, 8))
 ax = fig.add_axes([0.05, 0.38, 0.33, 0.57])
 ax_psd = fig.add_axes([0.41, 0.38, 0.33, 0.57])
+
+# --- Osie wyświetlania dekompozycji chirp (domyślnie ukryte) ---
+# Pas 1 (góra):   sygnał          y = 0.87..0.97
+# Pas 2 (skalogramy): y = 0.43..0.84
+# Pas 3 (slidery):    y = 0.28..0.39  (3 × suwak)
+# Pas 4 (radio):      y = 0.01..0.23
+ax_dc_sig = fig.add_axes([0.05,  0.87, 0.69, 0.10])
+ax_dc_1   = fig.add_axes([0.05,  0.43, 0.215, 0.41])
+ax_dc_2   = fig.add_axes([0.283, 0.43, 0.215, 0.41])
+ax_dc_3   = fig.add_axes([0.516, 0.43, 0.215, 0.41])
+for _a in (ax_dc_sig, ax_dc_1, ax_dc_2, ax_dc_3):
+    _a.set_visible(False)
 
 def load_signal_from_file(signal_type):
     """Ładuje parametry sygnału z pliku CSV jeśli istnieje"""
@@ -503,6 +516,261 @@ def _make_window(name, N):
         return signal.windows.boxcar(N)
 
 
+_WAVELET_FAMILIES = [
+    'Haar', 'Daubechies', 'Symlets', 'Coiflets',
+    'Biortogonalna', 'Gaussian', 'Meksykański kapelusz', 'Morleta'
+]
+
+_BIOR_VARIANTS = [
+    '1.1', '1.3', '1.5', '2.2', '2.4', '2.6', '2.8',
+    '3.1', '3.3', '3.5', '3.7', '3.9', '4.4', '5.5', '6.8'
+]
+
+
+def _resolve_wavelet(family, order):
+    """Zwraca krotkę (wavelet_name, is_continuous, is_bior)."""
+    order = int(order)
+    if family == 'Haar':
+        return 'haar', False, False
+    elif family == 'Daubechies':
+        o = max(1, min(order, 38))
+        return f'db{o}', False, False
+    elif family == 'Symlets':
+        o = max(2, min(order, 20))
+        return f'sym{o}', False, False
+    elif family == 'Coiflets':
+        o = max(1, min(order, 17))
+        return f'coif{o}', False, False
+    elif family == 'Biortogonalna':
+        idx = max(0, min(order - 1, len(_BIOR_VARIANTS) - 1))
+        return f'bior{_BIOR_VARIANTS[idx]}', False, True
+    elif family == 'Gaussian':
+        o = max(1, min(order, 8))
+        return f'gaus{o}', True, False
+    elif family == 'Meksykański kapelusz':
+        return 'mexh', True, False
+    elif family == 'Morleta':
+        return 'morl', True, False
+    return 'haar', False, False
+
+
+def _plot_daubechies():
+    """Rysuje falki Daubechies z sub-panelem wariantów i trybem porównania."""
+    db_name = radio_db_variant.value_selected      # np. 'db4'
+    level = int(slider_db_level.val)
+    compare = check_db_compare.get_status()[0]
+    current_order = int(db_name[2:])              # 'db4' -> 4
+
+    if compare:
+        n = max(current_order, 2)
+        colors = plt.cm.tab10(np.linspace(0, 0.9, n))
+
+        ax.cla()
+        ax.grid(True, alpha=0.3)
+        ax.set_xlabel('Czas')
+        ax.set_ylabel('Amplituda')
+        ax.set_title(f'Porównanie ψ: db1..{db_name}  (poziom={level})')
+
+        ax_psd.cla()
+        ax_psd.grid(True, alpha=0.3)
+        ax_psd.set_xlabel('Czas')
+        ax_psd.set_ylabel('Amplituda')
+        ax_psd.set_title(f'Porównanie φ: db1..{db_name}  (poziom={level})')
+
+        for i, o in enumerate(range(1, n + 1)):
+            w = pywt.Wavelet(f'db{o}')
+            phi, psi, x = w.wavefun(level=level)
+            ax.plot(x, psi, color=colors[i], linewidth=1.8, label=f'db{o}')
+            ax_psd.plot(x, phi, color=colors[i], linewidth=1.8, label=f'db{o}')
+
+        ax.axhline(0, color='k', linewidth=0.8, linestyle='--', alpha=0.4)
+        ax.legend(fontsize=9, ncol=2)
+        ax_psd.axhline(0, color='k', linewidth=0.8, linestyle='--', alpha=0.4)
+        ax_psd.legend(fontsize=9, ncol=2)
+    else:
+        w = pywt.Wavelet(db_name)
+        phi, psi, x = w.wavefun(level=level)
+        h = w.dec_lo   # niskopasmowy filtr dekompozycji
+        g = w.dec_hi   # wysokopasmowy filtr dekompozycji
+
+        ax.cla()
+        ax.grid(True, alpha=0.3)
+        ax.plot(x, psi, 'b-', linewidth=2)
+        ax.axhline(0, color='k', linewidth=0.8, linestyle='--', alpha=0.5)
+        ax.set_xlabel('Czas')
+        ax.set_ylabel('Amplituda')
+        ax.set_title(f'Funkcja falki (ψ): {db_name}  (poziom={level})')
+
+        ax_psd.cla()
+        ax_psd.grid(True, alpha=0.3)
+        idx = np.arange(len(h))
+        ml1, sl1, bl1 = ax_psd.stem(idx, h, linefmt='b-', markerfmt='bo',
+                                     basefmt='k-', label='h  (dec_lo)')
+        ml2, sl2, bl2 = ax_psd.stem(idx, g, linefmt='r--', markerfmt='rs',
+                                     basefmt='k-', label='g  (dec_hi)')
+        ml1.set_markersize(6); sl1.set_linewidth(1.5)
+        ml2.set_markersize(6); sl2.set_linewidth(1.5)
+        ax_psd.axhline(0, color='k', linewidth=0.8, linestyle='--', alpha=0.5)
+        ax_psd.set_xlabel('Indeks próbki')
+        ax_psd.set_ylabel('Wartość')
+        ax_psd.set_title(f'Współczynniki filtrów: {db_name}  (N={len(h)})')
+        ax_psd.legend(fontsize=11)
+
+
+def update_wavelets_plot():
+    """Rysuje wybraną falkę: lewy wykres = ψ, prawy = φ / widmo / filtry."""
+    global line, line_env_pos, line_env_neg
+    family = radio_wavelet_family.value_selected
+
+    try:
+        if family == 'Daubechies':
+            _plot_daubechies()
+        else:
+            order = int(slider_wavelet_order.val)
+            wavelet_name, is_continuous, is_bior = _resolve_wavelet(family, order)
+
+            if is_continuous:
+                w = pywt.ContinuousWavelet(wavelet_name)
+                psi, x = w.wavefun(level=10)
+
+                ax.cla()
+                ax.grid(True, alpha=0.3)
+                ax.plot(x, np.real(psi), 'b-', linewidth=2)
+                ax.axhline(0, color='k', linewidth=0.8, linestyle='--', alpha=0.5)
+                ax.set_xlabel('Czas')
+                ax.set_ylabel('Amplituda')
+                ax.set_title(f'Funkcja falki (ψ): {wavelet_name}')
+
+                dt = float(x[1] - x[0]) if len(x) > 1 else 1.0
+                psi_fft = np.abs(np.fft.rfft(np.real(psi), n=2048))
+                freqs_w = np.fft.rfftfreq(2048, d=dt)
+                ax_psd.cla()
+                ax_psd.grid(True, alpha=0.3)
+                ax_psd.plot(freqs_w, psi_fft, 'r-', linewidth=2)
+                ax_psd.set_xlabel('Częstotliwość')
+                ax_psd.set_ylabel('|Ψ(f)|')
+                ax_psd.set_xlim(0, freqs_w[np.argmax(psi_fft)] * 6 + 0.01)
+                ax_psd.set_title(f'Widmo amplitudowe falki: {wavelet_name}')
+
+            elif is_bior:
+                w = pywt.Wavelet(wavelet_name)
+                phi_d, psi_d, phi_r, psi_r, x = w.wavefun(level=10)
+
+                ax.cla()
+                ax.grid(True, alpha=0.3)
+                ax.plot(x, psi_d, 'b-', linewidth=2, label='Dekomponująca (ψ_d)')
+                ax.plot(x, psi_r, 'r--', linewidth=2, label='Rekonstruująca (ψ_r)')
+                ax.axhline(0, color='k', linewidth=0.8, linestyle='--', alpha=0.5)
+                ax.set_xlabel('Czas')
+                ax.set_ylabel('Amplituda')
+                ax.set_title(f'Funkcje falki (ψ): {wavelet_name}')
+                ax.legend(fontsize=11)
+
+                ax_psd.cla()
+                ax_psd.grid(True, alpha=0.3)
+                ax_psd.plot(x, phi_d, 'b-', linewidth=2, label='Dekomponująca (φ_d)')
+                ax_psd.plot(x, phi_r, 'r--', linewidth=2, label='Rekonstruująca (φ_r)')
+                ax_psd.axhline(0, color='k', linewidth=0.8, linestyle='--', alpha=0.5)
+                ax_psd.set_xlabel('Czas')
+                ax_psd.set_ylabel('Amplituda')
+                ax_psd.set_title(f'Funkcje skalujące (φ): {wavelet_name}')
+                ax_psd.legend(fontsize=11)
+
+            else:
+                w = pywt.Wavelet(wavelet_name)
+                phi, psi, x = w.wavefun(level=10)
+
+                ax.cla()
+                ax.grid(True, alpha=0.3)
+                ax.plot(x, psi, 'b-', linewidth=2)
+                ax.axhline(0, color='k', linewidth=0.8, linestyle='--', alpha=0.5)
+                ax.set_xlabel('Czas')
+                ax.set_ylabel('Amplituda')
+                ax.set_title(f'Funkcja falki (ψ): {wavelet_name}')
+
+                ax_psd.cla()
+                ax_psd.grid(True, alpha=0.3)
+                ax_psd.plot(x, phi, 'g-', linewidth=2)
+                ax_psd.axhline(0, color='k', linewidth=0.8, linestyle='--', alpha=0.5)
+                ax_psd.set_xlabel('Czas')
+                ax_psd.set_ylabel('Amplituda')
+                ax_psd.set_title(f'Funkcja skalująca (φ): {wavelet_name}')
+
+    except Exception as e:
+        print(f'[Falki] Błąd dla {family}: {e}')
+
+    fig.canvas.draw_idle()
+
+
+_DC_WAVELETS = ['haar', 'db2', 'db4', 'db8', 'sym4', 'sym8', 'coif2']
+
+
+def update_decomp_plot():
+    """Dekompozycja sygnału świergotliwego 3 falkami — skalogram DWT."""
+    f0 = float(slider_dc_f0.val)
+    f1 = float(slider_dc_f1.val)
+    level = int(slider_dc_lv.val)
+    wavelet_names = [
+        radio_dc_wv1.value_selected,
+        radio_dc_wv2.value_selected,
+        radio_dc_wv3.value_selected,
+    ]
+
+    N = 2048
+    t = np.linspace(0, 1.0, N, endpoint=False)
+    try:
+        chirp_sig = signal.chirp(t, f0=max(f0, 0.5), f1=max(f1, f0 + 1.0),
+                                  t1=1.0, method='linear')
+    except Exception as e:
+        print(f'[Dekomp] Błąd generowania chirp: {e}')
+        return
+
+    ax_dc_sig.cla()
+    ax_dc_sig.plot(t, chirp_sig, 'b-', linewidth=1.2)
+    ax_dc_sig.set_title(f'Sygnał świergotliwy: {f0:.0f} Hz \u2192 {f1:.0f} Hz')
+    ax_dc_sig.set_ylabel('Amplituda')
+    ax_dc_sig.set_xlim(0.0, 1.0)
+    ax_dc_sig.grid(True, alpha=0.3)
+
+    _cmaps = ['hot', 'plasma', 'viridis']
+    for ax_d, wname, cmap in zip([ax_dc_1, ax_dc_2, ax_dc_3], wavelet_names, _cmaps):
+        ax_d.cla()
+        try:
+            max_lv = pywt.dwt_max_level(N, wname)
+            lv = min(level, max_lv)
+            coeffs = pywt.wavedec(chirp_sig, wname, level=lv)
+            # coeffs[0]=cA_lv, coeffs[1..lv]=cD_lv..cD_1
+            # Odwróć detale: wiersz 0 = cD1 (najwyższa częstotliwość)
+            details = list(reversed(coeffs[1:]))
+            n_lv = len(details)
+
+            scalogram = np.zeros((n_lv, N))
+            for j, cD in enumerate(details):
+                t_c = np.linspace(0.0, 1.0, len(cD))
+                scalogram[j, :] = np.interp(np.linspace(0.0, 1.0, N), t_c, cD)
+
+            energy = np.abs(scalogram)
+            vmax = float(np.max(energy)) if energy.max() > 0 else 1.0
+
+            ax_d.imshow(energy, aspect='auto', cmap=cmap,
+                        vmin=0, vmax=vmax,
+                        extent=[0.0, 1.0, n_lv + 0.5, 0.5],
+                        interpolation='bilinear')
+
+            ax_d.set_yticks(range(1, n_lv + 1))
+            ax_d.set_yticklabels([f'cD{k}' for k in range(1, n_lv + 1)], fontsize=8)
+            ax_d.set_xlabel('Czas [s]', fontsize=9)
+            ax_d.set_ylabel('Poziom', fontsize=9)
+            ax_d.set_title(f'DWT: {wname}  (L={lv})', fontsize=11)
+            ax_d.tick_params(axis='x', labelsize=8)
+        except Exception as e:
+            ax_d.text(0.5, 0.5, f'Błąd:\n{e}', transform=ax_d.transAxes,
+                      ha='center', va='center', color='red', fontsize=10)
+            ax_d.set_title(f'DWT: {wname}')
+
+    fig.canvas.draw_idle()
+
+
 def update_windows_plot():
     """Rysuje okna nałożone na aktualny sygnał oraz ich widma amplitudowe."""
     N = int(slider_window_N.val)
@@ -865,8 +1133,7 @@ slider_impulse_pos = Slider(ax_impulse_pos, 'Pozycja impulsu', 0.0, initial_tmax
 ax_samples = plt.axes([0.20, 0.00, 0.45, 0.03])
 slider_samples = Slider(ax_samples, 'Liczba sampli', 100, 5000, valinit=initial_samples, valstep=100)
 
-# Envelope checkbox — right strip, above save button, part of signal panel
-ax_envelope_check = plt.axes([0.80, 0.49, 0.15, 0.07])
+ax_envelope_check = plt.axes([0.770, 0.50, 0.215, 0.08])
 check_envelope = CheckButtons(ax_envelope_check, ['Obwiednia'], [False])
 
 # --- Panel sygnału: typ sygnału ---
@@ -918,18 +1185,30 @@ radio_sampling_view = RadioButtons(ax_sampling_view, ('przebieg', 'widmo', 'bł�
 ax_sampling_view.set_visible(False)
 
 # --- Przyciski przełączające panele ---
-# 4 tabs, equally spaced in right strip x=0.77..0.99, y=0.33..0.37
-ax_tab_signal = plt.axes([0.770, 0.33, 0.049, 0.04])
+# 5 zakładek ułożonych pionowo po prawej stronie wykresów
+_TAB_X = 0.770
+_TAB_W = 0.215
+_TAB_H = 0.052
+_TAB_GAP = 0.008
+_TAB_TOP = 0.944
+
+ax_tab_signal = plt.axes([_TAB_X, _TAB_TOP - 0 * (_TAB_H + _TAB_GAP), _TAB_W, _TAB_H])
 btn_tab_signal = Button(ax_tab_signal, 'Sygnał', color='lightblue', hovercolor='deepskyblue')
 
-ax_tab_spectral = plt.axes([0.821, 0.33, 0.049, 0.04])
+ax_tab_spectral = plt.axes([_TAB_X, _TAB_TOP - 1 * (_TAB_H + _TAB_GAP), _TAB_W, _TAB_H])
 btn_tab_spectral = Button(ax_tab_spectral, 'Widmo', color='lightgray', hovercolor='silver')
 
-ax_tab_sampling = plt.axes([0.872, 0.33, 0.049, 0.04])
+ax_tab_sampling = plt.axes([_TAB_X, _TAB_TOP - 2 * (_TAB_H + _TAB_GAP), _TAB_W, _TAB_H])
 btn_tab_sampling = Button(ax_tab_sampling, 'Próbkowanie', color='lightgray', hovercolor='silver')
 
-ax_tab_windows = plt.axes([0.923, 0.33, 0.049, 0.04])
+ax_tab_windows = plt.axes([_TAB_X, _TAB_TOP - 3 * (_TAB_H + _TAB_GAP), _TAB_W, _TAB_H])
 btn_tab_windows = Button(ax_tab_windows, 'Okna', color='lightgray', hovercolor='silver')
+
+ax_tab_wavelets = plt.axes([_TAB_X, _TAB_TOP - 4 * (_TAB_H + _TAB_GAP), _TAB_W, _TAB_H])
+btn_tab_wavelets = Button(ax_tab_wavelets, 'Falki', color='lightgray', hovercolor='silver')
+
+ax_tab_decomp = plt.axes([_TAB_X, _TAB_TOP - 5 * (_TAB_H + _TAB_GAP), _TAB_W, _TAB_H])
+btn_tab_decomp = Button(ax_tab_decomp, 'Dekompozycja sygnału chirp', color='lightgray', hovercolor='silver')
 
 # --- Panel okien (domyślnie ukryty) ---
 ax_window_N = plt.axes([0.20, 0.22, 0.45, 0.03])
@@ -942,37 +1221,112 @@ check_windows = CheckButtons(ax_window_check, ['Hamming', 'Hann', 'Blackman', 'D
                              [True, True, True, True])
 ax_window_check.set_visible(False)
 
-# --- Przycisk zapisywania (zawsze widoczny) ---
-ax_save_button = plt.axes([0.80, 0.41, 0.10, 0.04])
+# --- Panel falek (domyślnie ukryty) ---
+ax_wavelet_family = plt.axes([0.06, 0.01, 0.22, 0.28])
+ax_wavelet_family.set_title('Rodzina falek', fontsize=15)
+radio_wavelet_family = RadioButtons(ax_wavelet_family, _WAVELET_FAMILIES)
+ax_wavelet_family.set_visible(False)
+
+ax_wavelet_order = plt.axes([0.40, 0.05, 0.40, 0.03])
+slider_wavelet_order = Slider(ax_wavelet_order, 'Rząd / wariant', 1, 20, valinit=4, valstep=1)
+ax_wavelet_order.set_visible(False)
+
+# --- Daubechies sub-panel (ukryty; widoczny tylko gdy wybrana rodzina Daubechies) ---
+ax_db_variant = plt.axes([0.30, 0.01, 0.14, 0.28])
+ax_db_variant.set_title('Wariant db', fontsize=15)
+radio_db_variant = RadioButtons(ax_db_variant, [f'db{i}' for i in range(1, 11)])
+ax_db_variant.set_visible(False)
+
+ax_db_level = plt.axes([0.53, 0.22, 0.40, 0.03])
+slider_db_level = Slider(ax_db_level, 'Rozdzielczość', 1, 12, valinit=8, valstep=1)
+ax_db_level.set_visible(False)
+
+ax_db_compare = plt.axes([0.47, 0.07, 0.22, 0.13])
+ax_db_compare.set_title('Tryb', fontsize=13)
+check_db_compare = CheckButtons(ax_db_compare, ['Porównaj warianty'], [False])
+ax_db_compare.set_visible(False)
+
+# --- Panel dekompozycji chirp (domyślnie ukryty) ---
+# Pas 4 — RadioButtons (Falka 1/2/3) wyrównane z osiami skalogramów
+ax_dc_wv1 = plt.axes([0.05,  0.01, 0.21, 0.22])
+ax_dc_wv1.set_title('Falka 1', fontsize=13)
+radio_dc_wv1 = RadioButtons(ax_dc_wv1, _DC_WAVELETS)
+radio_dc_wv1.set_active(2)   # domyślnie db4
+ax_dc_wv1.set_visible(False)
+
+ax_dc_wv2 = plt.axes([0.283, 0.01, 0.21, 0.22])
+ax_dc_wv2.set_title('Falka 2', fontsize=13)
+radio_dc_wv2 = RadioButtons(ax_dc_wv2, _DC_WAVELETS)
+radio_dc_wv2.set_active(4)   # domyślnie sym4
+ax_dc_wv2.set_visible(False)
+
+ax_dc_wv3 = plt.axes([0.516, 0.01, 0.21, 0.22])
+ax_dc_wv3.set_title('Falka 3', fontsize=13)
+radio_dc_wv3 = RadioButtons(ax_dc_wv3, _DC_WAVELETS)
+radio_dc_wv3.set_active(6)   # domyślnie coif2
+ax_dc_wv3.set_visible(False)
+
+# Pas 3 — slidery (f0, f1, poziom), od dołu do góry, y = 0.28..0.39
+ax_dc_f0 = plt.axes([0.20, 0.28, 0.53, 0.03])
+slider_dc_f0 = Slider(ax_dc_f0, 'Częst. startowa [Hz]', 1.0, 100.0, valinit=5.0, valstep=1.0)
+ax_dc_f0.set_visible(False)
+
+ax_dc_f1 = plt.axes([0.20, 0.32, 0.53, 0.03])
+slider_dc_f1 = Slider(ax_dc_f1, 'Częst. końcowa [Hz]', 10.0, 500.0, valinit=200.0, valstep=5.0)
+ax_dc_f1.set_visible(False)
+
+ax_dc_lv = plt.axes([0.20, 0.36, 0.53, 0.03])
+slider_dc_lv = Slider(ax_dc_lv, 'Poziom dekompozycji', 2, 10, valinit=6, valstep=1)
+ax_dc_lv.set_visible(False)
+
+# --- Przycisk zapisywania (prawy dolny róg, zawsze widoczny) ---
+ax_save_button = plt.axes([0.770, 0.36, 0.215, 0.05])
 save_button = Button(ax_save_button, 'Zapisz')
 
-# --- Przycisk ładowania CSV (zawsze widoczny) ---
-ax_load_button = plt.axes([0.80, 0.57, 0.10, 0.04])
+# --- Przycisk ładowania CSV (prawy dolny róg, zawsze widoczny) ---
+ax_load_button = plt.axes([0.770, 0.43, 0.215, 0.05])
 load_button = Button(ax_load_button, 'Załaduj CSV', color='lightyellow', hovercolor='khaki')
 
-_signal_panel_axes = [ax_freq, ax_amp, ax_phase, ax_tmax, ax_impulse_pos, ax_samples, ax_radio, ax_envelope_check]
+_signal_panel_axes = [ax_freq, ax_amp, ax_phase, ax_tmax, ax_impulse_pos, ax_samples, ax_radio]
 _spectral_panel_axes = [ax_psd_method, ax_psd_scale, ax_freq_zoom]
 _sampling_panel_axes = [ax_fs_sample, ax_bits, ax_lp_cutoff, ax_recon_method, ax_sampling_view]
 _windows_panel_axes = [ax_window_N, ax_window_check]
+# ax_db_* są zarządzane osobno — NIE wchodzą do _wavelet_panel_axes
+_wavelet_panel_axes = [ax_wavelet_family, ax_wavelet_order]
+_db_subpanel_axes   = [ax_db_variant, ax_db_level, ax_db_compare]
+_decomp_panel_axes  = [ax_dc_wv1, ax_dc_wv2, ax_dc_wv3, ax_dc_f0, ax_dc_f1, ax_dc_lv]
+_decomp_display_axes = [ax_dc_sig, ax_dc_1, ax_dc_2, ax_dc_3]
 
 # Zapamiętaj oryginalne pozycje (przed jakimkolwiek przesunięciem)
 _offscreen = [-2.0, -2.0, 0.01, 0.01]
-_signal_positions = {a: list(a.get_position().bounds) for a in _signal_panel_axes}
-_spectral_positions = {a: list(a.get_position().bounds) for a in _spectral_panel_axes}
-_sampling_positions = {a: list(a.get_position().bounds) for a in _sampling_panel_axes}
-_windows_positions = {a: list(a.get_position().bounds) for a in _windows_panel_axes}
+_signal_positions    = {a: list(a.get_position().bounds) for a in _signal_panel_axes}
+_spectral_positions  = {a: list(a.get_position().bounds) for a in _spectral_panel_axes}
+_sampling_positions  = {a: list(a.get_position().bounds) for a in _sampling_panel_axes}
+_windows_positions   = {a: list(a.get_position().bounds) for a in _windows_panel_axes}
+_wavelet_positions   = {a: list(a.get_position().bounds) for a in _wavelet_panel_axes}
+_db_subpanel_positions = {a: list(a.get_position().bounds) for a in _db_subpanel_axes}
+_decomp_positions    = {a: list(a.get_position().bounds) for a in _decomp_panel_axes}
 
 def _apply_panel(show_list, show_pos):
-    all_axes = _signal_panel_axes + _spectral_panel_axes + _sampling_panel_axes + _windows_panel_axes
+    """Ukrywa wszystkie panele kontrolne i pokazuje tylko żądany.
+    Przy okazji przywraca główne osie (ax/ax_psd) i ukrywa osie dekomp."""
+    all_axes = (_signal_panel_axes + _spectral_panel_axes + _sampling_panel_axes
+                + _windows_panel_axes + _wavelet_panel_axes + _db_subpanel_axes
+                + _decomp_panel_axes)
     for a in all_axes:
         a.set_position(_offscreen)
         a.set_visible(False)
     for a in show_list:
         a.set_position(show_pos[a])
         a.set_visible(True)
+    ax.set_visible(True)
+    ax_psd.set_visible(True)
+    for a in _decomp_display_axes:
+        a.set_visible(False)
 
 def _set_tab_colors(active_btn):
-    for btn in (btn_tab_signal, btn_tab_spectral, btn_tab_sampling, btn_tab_windows):
+    for btn in (btn_tab_signal, btn_tab_spectral, btn_tab_sampling,
+                btn_tab_windows, btn_tab_wavelets, btn_tab_decomp):
         color = 'lightblue' if btn is active_btn else 'lightgray'
         btn.color = color
         btn.ax.set_facecolor(color)
@@ -1009,6 +1363,48 @@ def show_windows_panel(event=None):
     update_windows_plot()
     fig.canvas.draw_idle()
 
+def _update_db_subpanel_visibility():
+    """Pokazuje/ukrywa kontrolki Daubechies przez zmianę pozycji i widoczności."""
+    is_db = (radio_wavelet_family.value_selected == 'Daubechies')
+    # ax_wavelet_order: pokaż tylko gdy NIE Daubechies
+    if is_db:
+        ax_wavelet_order.set_position(_offscreen)
+        ax_wavelet_order.set_visible(False)
+    else:
+        ax_wavelet_order.set_position(_wavelet_positions[ax_wavelet_order])
+        ax_wavelet_order.set_visible(True)
+    # db sub-panel: pokaż tylko gdy Daubechies
+    for a in _db_subpanel_axes:
+        if is_db:
+            a.set_position(_db_subpanel_positions[a])
+            a.set_visible(True)
+        else:
+            a.set_position(_offscreen)
+            a.set_visible(False)
+
+
+def show_wavelets_panel(event=None):
+    global _current_tab
+    _current_tab = 'wavelets'
+    _apply_panel(_wavelet_panel_axes, _wavelet_positions)
+    _update_db_subpanel_visibility()
+    _set_tab_colors(btn_tab_wavelets)
+    update_wavelets_plot()
+    fig.canvas.draw_idle()
+
+def show_decomp_panel(event=None):
+    global _current_tab
+    _current_tab = 'decomp'
+    _apply_panel(_decomp_panel_axes, _decomp_positions)  # przywraca ax/ax_psd, ukrywa dekomp display
+    # nadpisanie: ukryj główne osie, pokaż osie dekompozycji
+    ax.set_visible(False)
+    ax_psd.set_visible(False)
+    for a in _decomp_display_axes:
+        a.set_visible(True)
+    _set_tab_colors(btn_tab_decomp)
+    update_decomp_plot()
+    fig.canvas.draw_idle()
+
 # Funkcja do ładowania parametrów przy zmianie typu sygnału
 def on_signal_type_change(label):
     loaded_params = load_signal_from_file(label)
@@ -1042,8 +1438,7 @@ def update(val):
     t_new = np.linspace(0, tmax, samples)
     y_new = generate_signal(t_new, signal_type, freq, amp, phase, impulse_pos)
 
-    if _current_tab != 'windows':
-        # Po wyjściu z zakładki Okna ax.cla() odłącza line — odtwórz go
+    if _current_tab not in ('windows', 'wavelets', 'decomp'):
         if line.axes is None:
             ax.cla()
             ax.grid(True, alpha=0.3)
@@ -1073,6 +1468,8 @@ def update(val):
         update_sampling_plot()
     elif _current_tab == 'windows':
         update_windows_plot()
+    elif _current_tab in ('wavelets', 'decomp'):
+        pass  # obsługiwane przez własne funkcje update
     else:
         update_psd_plot(y_new, samples / tmax)
     fig.canvas.draw_idle()
@@ -1094,9 +1491,29 @@ btn_tab_signal.on_clicked(show_signal_panel)
 btn_tab_spectral.on_clicked(show_spectral_panel)
 btn_tab_sampling.on_clicked(show_sampling_panel)
 btn_tab_windows.on_clicked(show_windows_panel)
+btn_tab_wavelets.on_clicked(show_wavelets_panel)
+btn_tab_decomp.on_clicked(show_decomp_panel)
+
+radio_dc_wv1.on_clicked(lambda label: update_decomp_plot())
+radio_dc_wv2.on_clicked(lambda label: update_decomp_plot())
+radio_dc_wv3.on_clicked(lambda label: update_decomp_plot())
+slider_dc_f0.on_changed(lambda val: update_decomp_plot())
+slider_dc_f1.on_changed(lambda val: update_decomp_plot())
+slider_dc_lv.on_changed(lambda val: update_decomp_plot())
 
 slider_window_N.on_changed(lambda val: update_windows_plot())
 check_windows.on_clicked(lambda label: update_windows_plot())
+
+def _on_wavelet_family_changed(label):
+    _update_db_subpanel_visibility()
+    update_wavelets_plot()
+    fig.canvas.draw_idle()
+
+radio_wavelet_family.on_clicked(_on_wavelet_family_changed)
+slider_wavelet_order.on_changed(lambda val: update_wavelets_plot())
+radio_db_variant.on_clicked(lambda label: update_wavelets_plot())
+slider_db_level.on_changed(lambda val: update_wavelets_plot())
+check_db_compare.on_clicked(lambda label: update_wavelets_plot())
 
 slider_fs_sample.on_changed(update)
 slider_freq_zoom.on_changed(update)
