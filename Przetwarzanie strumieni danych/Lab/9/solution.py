@@ -45,6 +45,20 @@ ax_spec_cb  = fig.add_axes([0.705, 0.43, 0.018, 0.41])   # stałe miejsce dla co
 for _a in (ax_spec_sig, ax_spec, ax_spec_cb):
     _a.set_visible(False)
 
+# --- Osie wyświetlania miar jakości sygnału (domyślnie ukryte) ---
+ax_qual_orig    = fig.add_axes([0.05,  0.38, 0.33,  0.57])  # oryginalny + zaszumiony
+ax_qual_diff    = fig.add_axes([0.42,  0.38, 0.33,  0.57])  # szum / błąd
+ax_qual_metrics = fig.add_axes([0.05,  0.30, 0.66,  0.04])  # miary SNR/PSNR/MSE
+for _a in (ax_qual_orig, ax_qual_diff, ax_qual_metrics):
+    _a.set_visible(False)
+
+# --- Osie wyświetlania odszumiania (domyślnie ukryte) ---
+ax_den_noisy   = fig.add_axes([0.05, 0.42, 0.33, 0.53])  # oryginalny + zaszumiony
+ax_den_clean   = fig.add_axes([0.41, 0.42, 0.33, 0.53])  # odszumiony
+ax_den_metrics = fig.add_axes([0.05, 0.37, 0.66, 0.04])  # metryki SNR/MSE wejście→wyjście
+for _a in (ax_den_noisy, ax_den_clean, ax_den_metrics):
+    _a.set_visible(False)
+
 def load_signal_from_file(signal_type):
     """Ładuje parametry sygnału z pliku CSV jeśli istnieje"""
     filename = f"{signal_type}_params.csv"
@@ -398,6 +412,8 @@ def load_csv_signal(event=None):
         # Jeśli dekompozycja ma aktywne źródło 'z pliku CSV', odśwież wykres
         if _current_tab == 'decomp' and radio_dc_source.value_selected == 'z pliku CSV':
             update_decomp_plot()
+        if _current_tab == 'quality' and radio_qual_source.value_selected == 'z pliku CSV':
+            update_quality_plot()
     except Exception as e:
         print(f'[Załaduj CSV] Błąd wczytywania pliku: {e}')
 
@@ -1370,9 +1386,6 @@ slider_impulse_pos = Slider(ax_impulse_pos, 'Pozycja impulsu', 0.0, initial_tmax
 ax_samples = plt.axes([0.20, 0.00, 0.45, 0.03])
 slider_samples = Slider(ax_samples, 'Liczba sampli', 100, 5000, valinit=initial_samples, valstep=100)
 
-ax_envelope_check = plt.axes([0.770, 0.50, 0.215, 0.08])
-check_envelope = CheckButtons(ax_envelope_check, ['Obwiednia'], [False])
-
 # --- Panel sygnału: typ sygnału ---
 # Radio at right, below right strip, y=0.02..0.30 (no x overlap with sliders 0.06..0.69)
 ax_radio = plt.axes([0.70, 0.02, 0.24, 0.28])
@@ -1422,10 +1435,9 @@ radio_sampling_view = RadioButtons(ax_sampling_view, ('przebieg', 'widmo', 'bł�
 ax_sampling_view.set_visible(False)
 
 # --- Przyciski przełączające panele ---
-# 5 zakładek ułożonych pionowo po prawej stronie wykresów
 _TAB_X = 0.770
 _TAB_W = 0.215
-_TAB_H = 0.052
+_TAB_H = 0.045
 _TAB_GAP = 0.008
 _TAB_TOP = 0.944
 
@@ -1449,6 +1461,23 @@ btn_tab_decomp = Button(ax_tab_decomp, 'Dekompozycja', color='lightgray', hoverc
 
 ax_tab_spectrogram = plt.axes([_TAB_X, _TAB_TOP - 6 * (_TAB_H + _TAB_GAP), _TAB_W, _TAB_H])
 btn_tab_spectrogram = Button(ax_tab_spectrogram, 'Spektrogram', color='lightgray', hovercolor='silver')
+
+ax_tab_quality = plt.axes([_TAB_X, _TAB_TOP - 7 * (_TAB_H + _TAB_GAP), _TAB_W, _TAB_H])
+btn_tab_quality = Button(ax_tab_quality, 'Jakość sygnału', color='lightgray', hovercolor='silver')
+
+ax_tab_denoise = plt.axes([_TAB_X, _TAB_TOP - 8 * (_TAB_H + _TAB_GAP), _TAB_W, _TAB_H])
+btn_tab_denoise = Button(ax_tab_denoise, 'Odszumianie', color='lightgray', hovercolor='silver')
+
+ax_envelope_check = plt.axes([_TAB_X, _TAB_TOP - 9 * (_TAB_H + _TAB_GAP), _TAB_W, _TAB_H])
+check_envelope = CheckButtons(ax_envelope_check, ['Obwiednia'], [False])
+
+# --- Przycisk ładowania CSV (prawy dolny róg, zawsze widoczny) ---
+ax_load_button = plt.axes([_TAB_X, _TAB_TOP - 10 * (_TAB_H + _TAB_GAP), _TAB_W, _TAB_H])
+load_button = Button(ax_load_button, 'Załaduj CSV', color='lightyellow', hovercolor='khaki')
+
+# --- Przycisk zapisywania (prawy dolny róg, zawsze widoczny) ---
+ax_save_button = plt.axes([_TAB_X, _TAB_TOP - 11 * (_TAB_H + _TAB_GAP), _TAB_W, _TAB_H])
+save_button = Button(ax_save_button, 'Zapisz')
 
 # --- Panel okien (domyślnie ukryty) ---
 ax_window_N = plt.axes([0.20, 0.22, 0.45, 0.03])
@@ -1562,13 +1591,55 @@ radio_spec_scale = RadioButtons(ax_spec_scale, ['liniowa', 'dB'])
 radio_spec_scale.set_active(1)  # domyślnie dB
 ax_spec_scale.set_visible(False)
 
-# --- Przycisk zapisywania (prawy dolny róg, zawsze widoczny) ---
-ax_save_button = plt.axes([0.770, 0.36, 0.215, 0.05])
-save_button = Button(ax_save_button, 'Zapisz')
+# --- Panel jakości sygnału (domyślnie ukryty) ---
+ax_qual_noise_std = plt.axes([0.20, 0.27, 0.50, 0.03])
+slider_qual_noise_std = Slider(ax_qual_noise_std, 'Odch. std. szumu \u03c3', 0.0, 3.0, valinit=0.5, valstep=0.05)
+ax_qual_noise_std.set_visible(False)
 
-# --- Przycisk ładowania CSV (prawy dolny róg, zawsze widoczny) ---
-ax_load_button = plt.axes([0.770, 0.43, 0.215, 0.05])
-load_button = Button(ax_load_button, 'Załaduj CSV', color='lightyellow', hovercolor='khaki')
+ax_qual_noise_type = plt.axes([0.05, 0.03, 0.18, 0.21])
+ax_qual_noise_type.set_title('Typ szumu', fontsize=15)
+radio_qual_noise_type = RadioButtons(ax_qual_noise_type, ['Gaussowski', 'Jednostajny', "Laplace'a"])
+ax_qual_noise_type.set_visible(False)
+
+ax_qual_source = plt.axes([0.26, 0.06, 0.18, 0.15])
+ax_qual_source.set_title('Źródło sygnału', fontsize=15)
+radio_qual_source = RadioButtons(ax_qual_source, ['z panelu', 'z pliku CSV'])
+ax_qual_source.set_visible(False)
+
+# --- Panel odszumiania (domyślnie ukryty) ---
+ax_den_snr = plt.axes([0.20, 0.31, 0.40, 0.03])
+slider_den_snr = Slider(ax_den_snr, 'SNR celu [dB]', -10.0, 40.0, valinit=10.0, valstep=1.0)
+ax_den_snr.set_visible(False)
+
+# Subpanel Savitzky-Golay
+ax_den_sg_win = plt.axes([0.20, 0.25, 0.40, 0.03])
+slider_den_sg_win = Slider(ax_den_sg_win, 'Okno SG (próbki)', 5, 101, valinit=11, valstep=2)
+ax_den_sg_win.set_visible(False)
+
+ax_den_sg_ord = plt.axes([0.20, 0.19, 0.40, 0.03])
+slider_den_sg_ord = Slider(ax_den_sg_ord, 'Rząd SG', 1, 7, valinit=2, valstep=1)
+ax_den_sg_ord.set_visible(False)
+
+# Subpanel EMD (ta sama pozycja co sg_win — nie współistnieją)
+ax_den_emd_imf = plt.axes([0.20, 0.25, 0.40, 0.03])
+slider_den_emd_imf = Slider(ax_den_emd_imf, 'Odrzucone IMF (szum)', 1, 8, valinit=2, valstep=1)
+ax_den_emd_imf.set_visible(False)
+
+ax_den_noise_type = plt.axes([0.05, 0.02, 0.14, 0.12])
+ax_den_noise_type.set_title('Typ szumu', fontsize=15)
+radio_den_noise_type = RadioButtons(ax_den_noise_type, ['biały', 'brązowy'])
+ax_den_noise_type.set_visible(False)
+
+# Metoda odszumiania — umieszczona w prawej kolumnie (x=0.60) aby nie nakładać się ze suwakami
+ax_den_method = plt.axes([0.60, 0.01, 0.15, 0.27])
+ax_den_method.set_title('Metoda odszumiania', fontsize=15)
+radio_den_method = RadioButtons(ax_den_method, ['Wiener', 'Savitzky-Golay', 'EMD'])
+ax_den_method.set_visible(False)
+
+ax_den_source = plt.axes([0.23, 0.02, 0.16, 0.12])
+ax_den_source.set_title('\u0179r\u00f3d\u0142o sygna\u0142u', fontsize=15)
+radio_den_source = RadioButtons(ax_den_source, ['z panelu', 'z pliku CSV'])
+ax_den_source.set_visible(False)
 
 _signal_panel_axes = [ax_freq, ax_amp, ax_phase, ax_tmax, ax_impulse_pos, ax_samples, ax_radio]
 _spectral_panel_axes = [ax_psd_method, ax_psd_scale, ax_freq_zoom]
@@ -1582,6 +1653,11 @@ _decomp_emd_axes    = [ax_dc_emd_sift]   # zarządzane osobno (DWT/EMD toggle)
 _decomp_display_axes = [ax_dc_sig, ax_dc_1, ax_dc_2, ax_dc_3]
 _spectrogram_panel_axes = [ax_spec_nfft, ax_spec_overlap, ax_spec_window, ax_spec_cmap, ax_spec_scale]
 _spectrogram_display_axes = [ax_spec_sig, ax_spec, ax_spec_cb]
+_quality_panel_axes   = [ax_qual_noise_std, ax_qual_noise_type, ax_qual_source]
+_quality_display_axes = [ax_qual_orig, ax_qual_diff, ax_qual_metrics]
+_denoise_panel_axes   = [ax_den_snr, ax_den_noise_type, ax_den_method, ax_den_source]
+_denoise_sub_axes     = [ax_den_sg_win, ax_den_sg_ord, ax_den_emd_imf]   # widoczne warunkowo
+_denoise_display_axes = [ax_den_noisy, ax_den_clean, ax_den_metrics]
 
 # Zapamiętaj oryginalne pozycje (przed jakimkolwiek przesunięciem)
 _offscreen = [-2.0, -2.0, 0.01, 0.01]
@@ -1594,13 +1670,17 @@ _db_subpanel_positions = {a: list(a.get_position().bounds) for a in _db_subpanel
 _decomp_positions    = {a: list(a.get_position().bounds) for a in _decomp_panel_axes}
 _decomp_emd_positions = {a: list(a.get_position().bounds) for a in _decomp_emd_axes}
 _spectrogram_positions = {a: list(a.get_position().bounds) for a in _spectrogram_panel_axes}
+_quality_positions     = {a: list(a.get_position().bounds) for a in _quality_panel_axes}
+_denoise_positions     = {a: list(a.get_position().bounds) for a in _denoise_panel_axes}
+_denoise_sub_positions = {a: list(a.get_position().bounds) for a in _denoise_sub_axes}
 
 def _apply_panel(show_list, show_pos):
     """Ukrywa wszystkie panele kontrolne i pokazuje tylko żądany.
     Przy okazji przywraca główne osie (ax/ax_psd) i ukrywa osie dekomp/spektrogram."""
     all_axes = (_signal_panel_axes + _spectral_panel_axes + _sampling_panel_axes
                 + _windows_panel_axes + _wavelet_panel_axes + _db_subpanel_axes
-                + _decomp_panel_axes + _decomp_emd_axes + _spectrogram_panel_axes)
+                + _decomp_panel_axes + _decomp_emd_axes + _spectrogram_panel_axes
+                + _quality_panel_axes + _denoise_panel_axes + _denoise_sub_axes)
     for a in all_axes:
         a.set_position(_offscreen)
         a.set_visible(False)
@@ -1613,11 +1693,15 @@ def _apply_panel(show_list, show_pos):
         a.set_visible(False)
     for a in _spectrogram_display_axes:
         a.set_visible(False)
+    for a in _quality_display_axes:
+        a.set_visible(False)
+    for a in _denoise_display_axes:
+        a.set_visible(False)
 
 def _set_tab_colors(active_btn):
     for btn in (btn_tab_signal, btn_tab_spectral, btn_tab_sampling,
                 btn_tab_windows, btn_tab_wavelets, btn_tab_decomp,
-                btn_tab_spectrogram):
+                btn_tab_spectrogram, btn_tab_quality, btn_tab_denoise):
         color = 'lightblue' if btn is active_btn else 'lightgray'
         btn.color = color
         btn.ax.set_facecolor(color)
@@ -1740,6 +1824,288 @@ def show_spectrogram_panel(event=None):
     update_spectrogram_plot()
     fig.canvas.draw_idle()
 
+
+def compute_quality_metrics(y_orig, y_noisy):
+    """Oblicza MSE, SNR i PSNR między sygnałem oryginalnym a zaszumionym.
+
+    MSE  = mean((y_orig - y_noisy)^2)
+    SNR  = 10 * log10(P_signal / P_noise)  [dB]
+    PSNR = 10 * log10(MAX^2 / MSE)         [dB],  MAX = max|y_orig|
+    """
+    noise = y_noisy - y_orig
+    mse = float(np.mean(noise ** 2))
+    p_signal = float(np.mean(y_orig ** 2))
+    p_noise = float(np.mean(noise ** 2))
+    if p_signal <= 0:
+        snr = float('-inf')
+    elif p_noise < 1e-20:
+        snr = float('inf')
+    else:
+        snr = 10.0 * np.log10(p_signal / p_noise)
+    max_val = float(np.max(np.abs(y_orig)))
+    if mse < 1e-20:
+        psnr = float('inf')
+    elif max_val < 1e-20:
+        psnr = float('-inf')
+    else:
+        psnr = 10.0 * np.log10(max_val ** 2 / mse)
+    return mse, snr, psnr
+
+
+def update_quality_plot():
+    """Rysuje sygnał oryginalny z szumem, błąd oraz wyświetla miary SNR/PSNR/MSE."""
+    source = radio_qual_source.value_selected
+    if source == 'z pliku CSV':
+        if _loaded_signal['y'] is None:
+            ax_qual_orig.cla()
+            ax_qual_orig.text(0.5, 0.5,
+                              'Brak załadowanego sygnału CSV.\n'
+                              'Użyj przycisku "Załaduj CSV" w zakładce Sygnał.',
+                              ha='center', va='center',
+                              transform=ax_qual_orig.transAxes, fontsize=13)
+            ax_qual_diff.cla()
+            ax_qual_metrics.cla()
+            ax_qual_metrics.axis('off')
+            fig.canvas.draw_idle()
+            return
+        t = _loaded_signal['t'].astype(float)
+        y_orig = _loaded_signal['y'].astype(float)
+    else:  # z panelu
+        freq = slider_freq.val
+        amp = slider_amp.val
+        phase = slider_phase.val
+        tmax = slider_tmax.val
+        impulse_pos = slider_impulse_pos.val
+        signal_type = radio.value_selected
+        samples = int(slider_samples.val)
+        t = np.linspace(0, tmax, samples)
+        y_orig = generate_signal(t, signal_type, freq, amp, phase, impulse_pos)
+
+    N = len(y_orig)
+    noise_std = float(slider_qual_noise_std.val)
+    noise_type = radio_qual_noise_type.value_selected
+    # Ustalony ziarno — stabilne wartości miar przy tych samych parametrach
+    rng = np.random.default_rng(42)
+    if noise_type == 'Gaussowski':
+        noise = rng.normal(0.0, noise_std, N)
+    elif noise_type == 'Jednostajny':
+        half = noise_std * np.sqrt(3.0)
+        noise = rng.uniform(-half, half, N)
+    else:  # Laplace'a
+        scale = noise_std / np.sqrt(2.0)
+        noise = rng.laplace(0.0, scale, N)
+    y_noisy = y_orig + noise
+
+    mse, snr, psnr = compute_quality_metrics(y_orig, y_noisy)
+
+    # Wykres: oryginalny + zaszumiony
+    ax_qual_orig.cla()
+    ax_qual_orig.plot(t, y_orig, 'b-', linewidth=1.5, label='Oryginalny')
+    ax_qual_orig.plot(t, y_noisy, 'r-', linewidth=1.0, alpha=0.7, label='Zaszumiony')
+    ax_qual_orig.set_title('Sygnał oryginalny i zaszumiony')
+    ax_qual_orig.set_xlabel('Czas [s]')
+    ax_qual_orig.set_ylabel('Amplituda')
+    ax_qual_orig.legend(fontsize=12, loc='upper right')
+    ax_qual_orig.grid(True, alpha=0.3)
+    ax_qual_orig.set_xlim(t[0], t[-1])
+
+    # Wykres: szum / błąd
+    ax_qual_diff.cla()
+    ax_qual_diff.plot(t, y_noisy - y_orig, 'g-', linewidth=1.0)
+    ax_qual_diff.axhline(0, color='k', linewidth=0.8, linestyle='--')
+    ax_qual_diff.set_title('Szum / błąd  (zaszumiony \u2212 oryginalny)')
+    ax_qual_diff.set_xlabel('Czas [s]')
+    ax_qual_diff.set_ylabel('Błąd')
+    ax_qual_diff.grid(True, alpha=0.3)
+    ax_qual_diff.set_xlim(t[0], t[-1])
+
+    # Wy\u015bwietl miary jako\u015bci
+    ax_qual_metrics.cla()
+    ax_qual_metrics.axis('off')
+    snr_str  = (f'{snr:.2f} dB'  if np.isfinite(snr)  else ('\u221e dB'  if snr  > 0 else '\u2212\u221e dB'))
+    psnr_str = (f'{psnr:.2f} dB' if np.isfinite(psnr) else ('\u221e dB'  if psnr > 0 else '\u2212\u221e dB'))
+    mse_str  = f'{mse:.6g}'
+    metrics_text = (f'MSE = {mse_str}          '
+                    f'SNR = {snr_str}          '
+                    f'PSNR = {psnr_str}')
+    ax_qual_metrics.text(
+        0.5, 0.5, metrics_text,
+        ha='center', va='center',
+        transform=ax_qual_metrics.transAxes, fontsize=16,
+        bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow',
+                  edgecolor='goldenrod', alpha=0.9))
+    fig.canvas.draw_idle()
+
+
+def show_quality_panel(event=None):
+    global _current_tab
+    _current_tab = 'quality'
+    _apply_panel(_quality_panel_axes, _quality_positions)
+    ax.set_visible(False)
+    ax_psd.set_visible(False)
+    for a in _quality_display_axes:
+        a.set_visible(True)
+    _set_tab_colors(btn_tab_quality)
+    update_quality_plot()
+    fig.canvas.draw_idle()
+
+
+def _update_denoise_subpanel_visibility():
+    """Pokazuje/ukrywa suwaki specyficzne dla Savitzky-Golay i EMD."""
+    method = radio_den_method.value_selected
+    is_sg  = (method == 'Savitzky-Golay')
+    is_emd = (method == 'EMD')
+    for a in (ax_den_sg_win, ax_den_sg_ord):
+        if is_sg:
+            a.set_position(_denoise_sub_positions[a])
+            a.set_visible(True)
+        else:
+            a.set_position(_offscreen)
+            a.set_visible(False)
+    if is_emd:
+        ax_den_emd_imf.set_position(_denoise_sub_positions[ax_den_emd_imf])
+        ax_den_emd_imf.set_visible(True)
+    else:
+        ax_den_emd_imf.set_position(_offscreen)
+        ax_den_emd_imf.set_visible(False)
+
+
+def _add_noise_at_snr(y_orig, snr_db, noise_type):
+    """Dodaje szum biały lub brązowy do sygnału z zadanym SNR [dB]."""
+    N = len(y_orig)
+    rng = np.random.default_rng(42)
+    p_signal = max(float(np.mean(y_orig ** 2)), 1e-20)
+    snr_lin   = 10.0 ** (snr_db / 10.0)
+    noise_pow = p_signal / snr_lin
+    if noise_type == 'biały':
+        noise = rng.normal(0.0, np.sqrt(noise_pow), N)
+    else:  # brązowy (całka szumu białego)
+        white = rng.normal(0.0, 1.0, N)
+        brown = np.cumsum(white)
+        brown -= np.mean(brown)
+        p_brown = max(float(np.mean(brown ** 2)), 1e-20)
+        noise = brown * np.sqrt(noise_pow / p_brown)
+    return y_orig + noise
+
+
+def update_denoise_plot():
+    """Zaszumia sygnał z zadanym SNR i wyświetla oryginalny, zaszumiony i odszumiony."""
+    source = radio_den_source.value_selected
+    if source == 'z pliku CSV':
+        if _loaded_signal['y'] is None:
+            ax_den_noisy.cla()
+            ax_den_noisy.text(0.5, 0.5,
+                              'Brak załadowanego sygnału CSV.\n'
+                              'Użyj przycisku "Załaduj CSV".',
+                              ha='center', va='center',
+                              transform=ax_den_noisy.transAxes, fontsize=13)
+            ax_den_clean.cla()
+            ax_den_metrics.cla()
+            ax_den_metrics.axis('off')
+            fig.canvas.draw_idle()
+            return
+        t      = _loaded_signal['t'].astype(float)
+        y_orig = _loaded_signal['y'].astype(float)
+    else:
+        freq        = slider_freq.val
+        amp         = slider_amp.val
+        phase       = slider_phase.val
+        tmax        = slider_tmax.val
+        impulse_pos = slider_impulse_pos.val
+        signal_type = radio.value_selected
+        samples     = int(slider_samples.val)
+        t      = np.linspace(0, tmax, samples)
+        y_orig = generate_signal(t, signal_type, freq, amp, phase, impulse_pos)
+
+    snr_db     = float(slider_den_snr.val)
+    noise_type = radio_den_noise_type.value_selected
+    y_noisy    = _add_noise_at_snr(y_orig, snr_db, noise_type)
+
+    method = radio_den_method.value_selected
+    try:
+        if method == 'Wiener':
+            y_clean = signal.wiener(y_noisy)
+        elif method == 'Savitzky-Golay':
+            win  = int(slider_den_sg_win.val)
+            ord_ = int(slider_den_sg_ord.val)
+            if win % 2 == 0:
+                win += 1
+            win  = max(win, ord_ + 2)
+            ord_ = min(ord_, win - 2)
+            y_clean = signal.savgol_filter(y_noisy, win, ord_)
+        else:  # EMD
+            n_discard = int(slider_den_emd_imf.val)
+            max_imfs  = min(10, max(n_discard + 2, 4))
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                imfs = emd.sift.sift(y_noisy, max_imfs=max_imfs)
+            n_discard = min(n_discard, imfs.shape[1] - 1)
+            y_clean   = np.sum(imfs[:, n_discard:], axis=1)
+    except Exception as e:
+        print(f'[Odszumianie] Błąd metody {method}: {e}')
+        y_clean = y_noisy.copy()
+
+    mse_in,  snr_in,  _ = compute_quality_metrics(y_orig, y_noisy)
+    mse_out, snr_out, _ = compute_quality_metrics(y_orig, y_clean)
+
+    def _fmt(v):
+        return (f'{v:.2f}\u00a0dB' if np.isfinite(v)
+                else ('\u221e\u00a0dB' if v > 0 else '\u2212\u221e\u00a0dB'))
+
+    # Wykres 1: oryginalny + zaszumiony
+    ax_den_noisy.cla()
+    ax_den_noisy.plot(t, y_orig,  'b-', linewidth=1.5, label='Oryginalny')
+    ax_den_noisy.plot(t, y_noisy, color='tomato', linewidth=0.8, alpha=0.8,
+                      label=f'Zaszumiony ({noise_type}, {snr_db:.0f}\u00a0dB)')
+    ax_den_noisy.set_title('Sygnał oryginalny i zaszumiony')
+    ax_den_noisy.set_xlabel('Czas [s]')
+    ax_den_noisy.set_ylabel('Amplituda')
+    ax_den_noisy.legend(fontsize=11, loc='upper right')
+    ax_den_noisy.grid(True, alpha=0.3)
+    ax_den_noisy.set_xlim(t[0], t[-1])
+
+    # Wykres 2: oryginalny + odszumiony
+    ax_den_clean.cla()
+    ax_den_clean.plot(t, y_orig,  'b-', linewidth=1.5, alpha=0.5, label='Oryginalny')
+    ax_den_clean.plot(t, y_clean, 'g-', linewidth=1.5, label=f'Odszumiony — {method}')
+    ax_den_clean.set_title(f'Wynik odszumiania: {method}')
+    ax_den_clean.set_xlabel('Czas [s]')
+    ax_den_clean.set_ylabel('Amplituda')
+    ax_den_clean.legend(fontsize=11, loc='upper right')
+    ax_den_clean.grid(True, alpha=0.3)
+    ax_den_clean.set_xlim(t[0], t[-1])
+
+    # Pasek metryk
+    ax_den_metrics.cla()
+    ax_den_metrics.axis('off')
+    txt = (f'Wejście:  SNR = {_fmt(snr_in)},  MSE = {mse_in:.4g}'
+           f'     \u2502     '
+           f'Wyjście:  SNR = {_fmt(snr_out)},  MSE = {mse_out:.4g}'
+           f'     \u2502     '
+           f'\u0394SNR = {snr_out - snr_in:+.2f}\u00a0dB')
+    ax_den_metrics.text(
+        0.5, 0.5, txt,
+        ha='center', va='center',
+        transform=ax_den_metrics.transAxes, fontsize=14,
+        bbox=dict(boxstyle='round,pad=0.4', facecolor='lightcyan',
+                  edgecolor='steelblue', alpha=0.9))
+    fig.canvas.draw_idle()
+
+
+def show_denoise_panel(event=None):
+    global _current_tab
+    _current_tab = 'denoise'
+    _apply_panel(_denoise_panel_axes, _denoise_positions)
+    _update_denoise_subpanel_visibility()
+    ax.set_visible(False)
+    ax_psd.set_visible(False)
+    for a in _denoise_display_axes:
+        a.set_visible(True)
+    _set_tab_colors(btn_tab_denoise)
+    update_denoise_plot()
+    fig.canvas.draw_idle()
+
+
 # Funkcja do ładowania parametrów przy zmianie typu sygnału
 def on_signal_type_change(label):
     loaded_params = load_signal_from_file(label)
@@ -1773,7 +2139,7 @@ def update(val):
     t_new = np.linspace(0, tmax, samples)
     y_new = generate_signal(t_new, signal_type, freq, amp, phase, impulse_pos)
 
-    if _current_tab not in ('windows', 'wavelets', 'decomp', 'spectrogram'):
+    if _current_tab not in ('windows', 'wavelets', 'decomp', 'spectrogram', 'quality', 'denoise'):
         if line.axes is None:
             ax.cla()
             ax.grid(True, alpha=0.3)
@@ -1805,6 +2171,10 @@ def update(val):
         update_windows_plot()
     elif _current_tab == 'spectrogram':
         update_spectrogram_plot()
+    elif _current_tab == 'quality':
+        update_quality_plot()
+    elif _current_tab == 'denoise':
+        update_denoise_plot()
     elif _current_tab in ('wavelets', 'decomp'):
         pass  # obsługiwane przez własne funkcje update
     else:
@@ -1831,6 +2201,25 @@ btn_tab_windows.on_clicked(show_windows_panel)
 btn_tab_wavelets.on_clicked(show_wavelets_panel)
 btn_tab_decomp.on_clicked(show_decomp_panel)
 btn_tab_spectrogram.on_clicked(show_spectrogram_panel)
+btn_tab_quality.on_clicked(show_quality_panel)
+btn_tab_denoise.on_clicked(show_denoise_panel)
+
+slider_den_snr.on_changed(lambda val: update_denoise_plot())
+slider_den_sg_win.on_changed(lambda val: update_denoise_plot())
+slider_den_sg_ord.on_changed(lambda val: update_denoise_plot())
+slider_den_emd_imf.on_changed(lambda val: update_denoise_plot())
+radio_den_noise_type.on_clicked(lambda label: update_denoise_plot())
+radio_den_source.on_clicked(lambda label: update_denoise_plot())
+
+def _on_den_method_changed(label):
+    _update_denoise_subpanel_visibility()
+    update_denoise_plot()
+    fig.canvas.draw_idle()
+radio_den_method.on_clicked(_on_den_method_changed)
+
+slider_qual_noise_std.on_changed(lambda val: update_quality_plot())
+radio_qual_noise_type.on_clicked(lambda label: update_quality_plot())
+radio_qual_source.on_clicked(lambda label: update_quality_plot())
 
 radio_spec_window.on_clicked(lambda label: update_spectrogram_plot())
 radio_spec_cmap.on_clicked(lambda label: update_spectrogram_plot())
