@@ -9,8 +9,8 @@ import tkinter as tk
 import tkinter.font as tk_font
 from tkinter import filedialog as tk_filedialog
 import pywt
-
-#Zad 1
+import warnings
+import emd
 
 # Konfiguracja wykresu
 plt.rcParams.update({
@@ -36,6 +36,13 @@ ax_dc_1   = fig.add_axes([0.05,  0.43, 0.215, 0.41])
 ax_dc_2   = fig.add_axes([0.283, 0.43, 0.215, 0.41])
 ax_dc_3   = fig.add_axes([0.516, 0.43, 0.215, 0.41])
 for _a in (ax_dc_sig, ax_dc_1, ax_dc_2, ax_dc_3):
+    _a.set_visible(False)
+
+# --- Osie wyświetlania spektrogramu (domyślnie ukryte) ---
+ax_spec_sig = fig.add_axes([0.05, 0.87, 0.69, 0.10])
+ax_spec     = fig.add_axes([0.05, 0.43, 0.64, 0.41])
+ax_spec_cb  = fig.add_axes([0.705, 0.43, 0.018, 0.41])   # stałe miejsce dla colorbar
+for _a in (ax_spec_sig, ax_spec, ax_spec_cb):
     _a.set_visible(False)
 
 def load_signal_from_file(signal_type):
@@ -388,6 +395,9 @@ def load_csv_signal(event=None):
         print(f'[Załaduj CSV] Załadowano {len(y_data)} próbek z: {filepath}')
         print(f'             Kolumna czasu: {t_col}, kolumna amplitudy: {y_col}')
         _plot_loaded_spectrum()
+        # Jeśli dekompozycja ma aktywne źródło 'z pliku CSV', odśwież wykres
+        if _current_tab == 'decomp' and radio_dc_source.value_selected == 'z pliku CSV':
+            update_decomp_plot()
     except Exception as e:
         print(f'[Załaduj CSV] Błąd wczytywania pliku: {e}')
 
@@ -705,10 +715,56 @@ def update_wavelets_plot():
 _DC_WAVELETS = ['haar', 'db2', 'db4', 'db8', 'sym4', 'sym8', 'coif2']
 
 
+def _get_decomp_signal():
+    """Zwraca (t, y, fs, tmax, title) zależnie od wybranego źródła sygnału."""
+    source = radio_dc_source.value_selected
+    if source == 'z panelu':
+        freq = slider_freq.val
+        amp = slider_amp.val
+        phase = slider_phase.val
+        tmax = slider_tmax.val
+        impulse_pos = slider_impulse_pos.val
+        signal_type = radio.value_selected
+        samples = int(slider_samples.val)
+        t = np.linspace(0, tmax, samples)
+        y = generate_signal(t, signal_type, freq, amp, phase, impulse_pos)
+        fs = samples / tmax
+        title = f'{signal_type}  (f={freq:.1f} Hz, A={amp:.1f})'
+        return t, y, fs, tmax, title
+    elif source == 'z pliku CSV':
+        t_csv = _loaded_signal['t']
+        y_csv = _loaded_signal['y']
+        if y_csv is None:
+            raise ValueError('Brak załadowanego sygnału CSV. Użyj przycisku "Załaduj CSV" w zakładce Sygnał.')
+        t = t_csv.astype(float)
+        y = y_csv.astype(float)
+        dt = float(t[1] - t[0]) if len(t) > 1 else 1.0
+        fs = 1.0 / dt if dt > 0 else float(len(y))
+        tmax = float(t[-1])
+        title = f'CSV: {_loaded_signal["label"]}'
+        return t, y, fs, tmax, title
+    else:  # chirp
+        f0 = float(slider_dc_f0.val)
+        f1 = float(slider_dc_f1.val)
+        N = 2048
+        t = np.linspace(0, 1.0, N, endpoint=False)
+        y = signal.chirp(t, f0=max(f0, 0.5), f1=max(f1, f0 + 1.0), t1=1.0, method='linear')
+        fs = float(N)
+        tmax = 1.0
+        title = f'Sygnał świergotliwy: {f0:.0f} Hz \u2192 {f1:.0f} Hz'
+        return t, y, fs, tmax, title
+
+
 def update_decomp_plot():
-    """Dekompozycja sygnału świergotliwego 3 falkami — skalogram DWT."""
-    f0 = float(slider_dc_f0.val)
-    f1 = float(slider_dc_f1.val)
+    """Dispatcher — wywołuje DWT lub EMD zależnie od wybranej metody."""
+    if radio_dc_method.value_selected == 'EMD':
+        _decomp_emd_plot()
+    else:
+        _decomp_dwt_plot()
+
+
+def _decomp_dwt_plot():
+    """Dekompozycja sygnału 3 falkami — skalogram DWT."""
     level = int(slider_dc_lv.val)
     wavelet_names = [
         radio_dc_wv1.value_selected,
@@ -716,20 +772,19 @@ def update_decomp_plot():
         radio_dc_wv3.value_selected,
     ]
 
-    N = 2048
-    t = np.linspace(0, 1.0, N, endpoint=False)
     try:
-        chirp_sig = signal.chirp(t, f0=max(f0, 0.5), f1=max(f1, f0 + 1.0),
-                                  t1=1.0, method='linear')
+        t, chirp_sig, fs, tmax, title = _get_decomp_signal()
     except Exception as e:
-        print(f'[Dekomp] Błąd generowania chirp: {e}')
+        print(f'[DWT] Błąd generowania sygnału: {e}')
         return
+
+    N = len(chirp_sig)
 
     ax_dc_sig.cla()
     ax_dc_sig.plot(t, chirp_sig, 'b-', linewidth=1.2)
-    ax_dc_sig.set_title(f'Sygnał świergotliwy: {f0:.0f} Hz \u2192 {f1:.0f} Hz')
+    ax_dc_sig.set_title(title)
     ax_dc_sig.set_ylabel('Amplituda')
-    ax_dc_sig.set_xlim(0.0, 1.0)
+    ax_dc_sig.set_xlim(t[0], t[-1])
     ax_dc_sig.grid(True, alpha=0.3)
 
     _cmaps = ['hot', 'plasma', 'viridis']
@@ -754,7 +809,7 @@ def update_decomp_plot():
 
             ax_d.imshow(energy, aspect='auto', cmap=cmap,
                         vmin=0, vmax=vmax,
-                        extent=[0.0, 1.0, n_lv + 0.5, 0.5],
+                        extent=[t[0], t[-1], n_lv + 0.5, 0.5],
                         interpolation='bilinear')
 
             ax_d.set_yticks(range(1, n_lv + 1))
@@ -768,6 +823,188 @@ def update_decomp_plot():
                       ha='center', va='center', color='red', fontsize=10)
             ax_d.set_title(f'DWT: {wname}')
 
+    fig.canvas.draw_idle()
+
+
+def _decomp_emd_plot():
+    """Dekompozycja sygnału metodą EMD (sift/ensemble/mask)."""
+    max_imfs = int(slider_dc_lv.val)
+    sift_method = radio_dc_emd_sift.value_selected
+
+    try:
+        t_emd, chirp_sig, fs_emd, tmax, title = _get_decomp_signal()
+    except Exception as e:
+        print(f'[EMD] Błąd generowania sygnału: {e}')
+        return
+
+    N = len(chirp_sig)
+    f_max_vis = fs_emd / 2.0
+
+    # Sygnał na górze
+    ax_dc_sig.cla()
+    ax_dc_sig.plot(t_emd, chirp_sig, 'b-', linewidth=1.2)
+    ax_dc_sig.set_title(title)
+    ax_dc_sig.set_ylabel('Amplituda')
+    ax_dc_sig.set_xlim(t_emd[0], t_emd[-1])
+    ax_dc_sig.grid(True, alpha=0.3)
+
+    # Oblicz IMFs
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            if sift_method == 'sift':
+                imfs = emd.sift.sift(chirp_sig, max_imfs=max_imfs)
+            elif sift_method == 'ensemble':
+                imfs = emd.sift.ensemble_sift(chirp_sig, max_imfs=max_imfs,
+                                              nensembles=4, nprocesses=1)
+            else:  # mask
+                imfs = emd.sift.mask_sift(chirp_sig, max_imfs=max_imfs)
+    except Exception as e:
+        for _ax in (ax_dc_1, ax_dc_2, ax_dc_3):
+            _ax.cla()
+            _ax.text(0.5, 0.5, f'Błąd EMD:\n{e}', transform=_ax.transAxes,
+                     ha='center', va='center', color='red', fontsize=10)
+        fig.canvas.draw_idle()
+        return
+
+    n_imfs = imfs.shape[1]
+    colors = plt.cm.tab10(np.linspace(0, 0.9, n_imfs))
+
+    # --- Wykres 1: przebiegi IMF (zestawione z odsunięciem) ---
+    ax_dc_1.cla()
+    ax_dc_1.grid(True, alpha=0.25)
+    scale = float(np.max(np.abs(imfs))) if np.max(np.abs(imfs)) > 0 else 1.0
+    step = scale * 2.5
+    for k in range(n_imfs):
+        ax_dc_1.plot(t_emd, imfs[:, k] + k * step, color=colors[k], linewidth=0.9)
+        ax_dc_1.axhline(k * step, color='gray', linewidth=0.4, linestyle='--', alpha=0.5)
+    ax_dc_1.set_yticks([k * step for k in range(n_imfs)])
+    ax_dc_1.set_yticklabels([f'IMF {k + 1}' for k in range(n_imfs)], fontsize=8)
+    ax_dc_1.set_xlabel('Czas [s]', fontsize=9)
+    ax_dc_1.set_xlim(t_emd[0], t_emd[-1])
+    ax_dc_1.set_title(f'IMFs — {sift_method}  (n={n_imfs})', fontsize=11)
+    ax_dc_1.tick_params(axis='x', labelsize=8)
+
+    # --- Wykres 2: widma amplitudowe IMF (znormalizowane, zestawione) ---
+    ax_dc_2.cla()
+    ax_dc_2.grid(True, alpha=0.25)
+    freqs_fft = np.fft.rfftfreq(N, d=1.0 / fs_emd)
+    mask_f = freqs_fft <= f_max_vis
+    for k in range(n_imfs):
+        X = np.abs(np.fft.rfft(imfs[:, k])) * 2.0 / N
+        X_norm = X / (np.max(X) + 1e-12)
+        ax_dc_2.plot(freqs_fft[mask_f], X_norm[mask_f] + k * 1.3,
+                     color=colors[k], linewidth=0.9)
+        ax_dc_2.axhline(k * 1.3, color='gray', linewidth=0.4, linestyle='--', alpha=0.5)
+    ax_dc_2.set_yticks([k * 1.3 for k in range(n_imfs)])
+    ax_dc_2.set_yticklabels([f'IMF {k + 1}' for k in range(n_imfs)], fontsize=8)
+    ax_dc_2.set_xlabel('Częstotliwość [Hz]', fontsize=9)
+    ax_dc_2.set_xlim(0, f_max_vis)
+    ax_dc_2.set_title('Widma amplitudowe IMF', fontsize=11)
+    ax_dc_2.tick_params(axis='x', labelsize=8)
+
+    # --- Wykres 3: widmo Hilberta–Huanga (HHT) ---
+    ax_dc_3.cla()
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            IP, IF, IA = emd.spectra.frequency_transform(imfs, int(fs_emd), 'hilbert')
+        IF_clipped = np.clip(IF, 0, f_max_vis)
+        edges = np.linspace(0, f_max_vis, 129)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            f_centers, hht = emd.spectra.hilberthuang(
+                IF_clipped, IA, edges,
+                sum_time=False, sum_imfs=True, mode='energy'
+            )
+        hht_db = 10.0 * np.log10(np.maximum(hht, 1e-30))
+        vmax = float(np.max(hht_db))
+        vmin = vmax - 60.0
+        ax_dc_3.imshow(hht_db, aspect='auto', origin='lower', cmap='hot',
+                       vmin=vmin, vmax=vmax,
+                       extent=[t_emd[0], t_emd[-1], 0.0, f_max_vis],
+                       interpolation='bilinear')
+        ax_dc_3.set_xlabel('Czas [s]', fontsize=9)
+        ax_dc_3.set_ylabel('Częst. chwilowa [Hz]', fontsize=9)
+        ax_dc_3.set_title('Widmo Hilberta–Huanga (HHT)', fontsize=11)
+        ax_dc_3.tick_params(axis='both', labelsize=8)
+    except Exception as e:
+        ax_dc_3.text(0.5, 0.5, f'Błąd HHT:\n{e}', transform=ax_dc_3.transAxes,
+                     ha='center', va='center', color='red', fontsize=10)
+        ax_dc_3.set_title('HHT — błąd')
+
+    fig.canvas.draw_idle()
+
+
+def update_spectrogram_plot():
+    """Rysuje spektrogram aktualnego sygnału (STFT via scipy.signal.spectrogram)."""
+    freq = slider_freq.val
+    amp = slider_amp.val
+    phase = slider_phase.val
+    tmax = slider_tmax.val
+    impulse_pos = slider_impulse_pos.val
+    signal_type = radio.value_selected
+    samples = int(slider_samples.val)
+
+    nfft = int(slider_spec_nfft.val)
+    overlap_pct = float(slider_spec_overlap.val)
+    window_name = radio_spec_window.value_selected
+    cmap = radio_spec_cmap.value_selected
+    scale = radio_spec_scale.value_selected
+
+    t_sig = np.linspace(0, tmax, samples)
+    y_sig = generate_signal(t_sig, signal_type, freq, amp, phase, impulse_pos)
+    fs_sig = samples / tmax
+
+    noverlap = int(nfft * overlap_pct / 100.0)
+    win = _make_window(window_name, nfft)
+
+    # Wyczyść dedykowane osie colorbara (nie naruszamy geometrii ax_spec)
+    ax_spec_cb.cla()
+
+    # Górny pasek — przebieg sygnału
+    ax_spec_sig.cla()
+    ax_spec_sig.plot(t_sig, y_sig, 'b-', linewidth=1.2)
+    ax_spec_sig.set_title(f'Sygnał: {signal_type}  (f={freq:.1f} Hz, A={amp:.1f})')
+    ax_spec_sig.set_ylabel('Amplituda')
+    ax_spec_sig.set_xlim(0, tmax)
+    ax_spec_sig.grid(True, alpha=0.3)
+
+    # Spektrogram
+    ax_spec.cla()
+    try:
+        f_s, t_s, Sxx = signal.spectrogram(
+            y_sig, fs=fs_sig, window=win,
+            nperseg=nfft, noverlap=noverlap,
+            scaling='density'
+        )
+        if scale == 'dB':
+            Sxx_plot = 10.0 * np.log10(np.maximum(Sxx, 1e-12))
+            vmax = float(np.max(Sxx_plot))
+            vmin = vmax - 80.0
+            cb_label = 'PSD [dB/Hz]'
+        else:
+            Sxx_plot = Sxx
+            vmax = float(np.max(Sxx_plot)) if np.max(Sxx_plot) > 0 else 1.0
+            vmin = 0.0
+            cb_label = 'PSD [V²/Hz]'
+        im = ax_spec.pcolormesh(t_s, f_s, Sxx_plot, shading='gouraud',
+                                cmap=cmap, vmin=vmin, vmax=vmax)
+        ax_spec.set_ylabel('Częstotliwość [Hz]')
+        ax_spec.set_xlabel('Czas [s]')
+        ax_spec.set_xlim(t_s[0] if len(t_s) > 0 else 0,
+                         t_s[-1] if len(t_s) > 0 else tmax)
+        ax_spec.set_ylim(0, fs_sig / 2)
+        ax_spec.set_title(
+            f'Spektrogram — okno: {window_name}, NFFT={nfft}, nakładanie={overlap_pct:.0f}%'
+        )
+        fig.colorbar(im, cax=ax_spec_cb)
+        ax_spec_cb.set_ylabel(cb_label, fontsize=11)
+    except Exception as e:
+        ax_spec.text(0.5, 0.5, f'Błąd spektrogramu:\n{e}',
+                     transform=ax_spec.transAxes, ha='center', va='center',
+                     color='red', fontsize=12)
+        ax_spec.set_title('Spektrogram — błąd')
     fig.canvas.draw_idle()
 
 
@@ -1208,7 +1445,10 @@ ax_tab_wavelets = plt.axes([_TAB_X, _TAB_TOP - 4 * (_TAB_H + _TAB_GAP), _TAB_W, 
 btn_tab_wavelets = Button(ax_tab_wavelets, 'Falki', color='lightgray', hovercolor='silver')
 
 ax_tab_decomp = plt.axes([_TAB_X, _TAB_TOP - 5 * (_TAB_H + _TAB_GAP), _TAB_W, _TAB_H])
-btn_tab_decomp = Button(ax_tab_decomp, 'Dekompozycja sygnału chirp', color='lightgray', hovercolor='silver')
+btn_tab_decomp = Button(ax_tab_decomp, 'Dekompozycja', color='lightgray', hovercolor='silver')
+
+ax_tab_spectrogram = plt.axes([_TAB_X, _TAB_TOP - 6 * (_TAB_H + _TAB_GAP), _TAB_W, _TAB_H])
+btn_tab_spectrogram = Button(ax_tab_spectrogram, 'Spektrogram', color='lightgray', hovercolor='silver')
 
 # --- Panel okien (domyślnie ukryty) ---
 ax_window_N = plt.axes([0.20, 0.22, 0.45, 0.03])
@@ -1279,6 +1519,49 @@ ax_dc_lv = plt.axes([0.20, 0.36, 0.53, 0.03])
 slider_dc_lv = Slider(ax_dc_lv, 'Poziom dekompozycji', 2, 10, valinit=6, valstep=1)
 ax_dc_lv.set_visible(False)
 
+# Selektor metody dekompozycji DWT / EMD (zawsze widoczny w zakładce Dekompozycja)
+ax_dc_method = plt.axes([0.75, 0.24, 0.22, 0.05])
+ax_dc_method.set_title('Metoda', fontsize=13)
+radio_dc_method = RadioButtons(ax_dc_method, ['DWT', 'EMD'])
+ax_dc_method.set_visible(False)
+
+# Selektor źródła sygnału (chirp z suwaków / dowolny sygnał z panelu / z pliku CSV)
+ax_dc_source = plt.axes([0.75, 0.09, 0.22, 0.10])
+ax_dc_source.set_title('Źródło sygnału', fontsize=13)
+radio_dc_source = RadioButtons(ax_dc_source, ['chirp', 'z panelu', 'z pliku CSV'])
+ax_dc_source.set_visible(False)
+
+# Metoda prosiewania EMD (w pozycji ax_dc_wv1, widoczna tylko w trybie EMD)
+ax_dc_emd_sift = plt.axes([0.05, 0.01, 0.21, 0.22])
+ax_dc_emd_sift.set_title('Sift EMD', fontsize=13)
+radio_dc_emd_sift = RadioButtons(ax_dc_emd_sift, ['sift', 'ensemble', 'mask'])
+ax_dc_emd_sift.set_visible(False)
+
+# --- Panel spektrogramu (domyślnie ukryty) ---
+ax_spec_nfft = plt.axes([0.20, 0.36, 0.53, 0.03])
+slider_spec_nfft = Slider(ax_spec_nfft, 'NFFT', 32, 1024, valinit=256, valstep=32)
+ax_spec_nfft.set_visible(False)
+
+ax_spec_overlap = plt.axes([0.20, 0.32, 0.53, 0.03])
+slider_spec_overlap = Slider(ax_spec_overlap, 'Nakładanie [%]', 0, 95, valinit=75, valstep=5)
+ax_spec_overlap.set_visible(False)
+
+ax_spec_window = plt.axes([0.06, 0.01, 0.18, 0.22])
+ax_spec_window.set_title('Okno', fontsize=15)
+radio_spec_window = RadioButtons(ax_spec_window, ['Hamming', 'Hann', 'Blackman', 'Dirichlet'])
+ax_spec_window.set_visible(False)
+
+ax_spec_cmap = plt.axes([0.30, 0.01, 0.16, 0.22])
+ax_spec_cmap.set_title('Mapa kolorów', fontsize=15)
+radio_spec_cmap = RadioButtons(ax_spec_cmap, ['hot', 'viridis', 'plasma', 'jet'])
+ax_spec_cmap.set_visible(False)
+
+ax_spec_scale = plt.axes([0.52, 0.01, 0.16, 0.22])
+ax_spec_scale.set_title('Skala', fontsize=15)
+radio_spec_scale = RadioButtons(ax_spec_scale, ['liniowa', 'dB'])
+radio_spec_scale.set_active(1)  # domyślnie dB
+ax_spec_scale.set_visible(False)
+
 # --- Przycisk zapisywania (prawy dolny róg, zawsze widoczny) ---
 ax_save_button = plt.axes([0.770, 0.36, 0.215, 0.05])
 save_button = Button(ax_save_button, 'Zapisz')
@@ -1294,8 +1577,11 @@ _windows_panel_axes = [ax_window_N, ax_window_check]
 # ax_db_* są zarządzane osobno — NIE wchodzą do _wavelet_panel_axes
 _wavelet_panel_axes = [ax_wavelet_family, ax_wavelet_order]
 _db_subpanel_axes   = [ax_db_variant, ax_db_level, ax_db_compare]
-_decomp_panel_axes  = [ax_dc_wv1, ax_dc_wv2, ax_dc_wv3, ax_dc_f0, ax_dc_f1, ax_dc_lv]
+_decomp_panel_axes  = [ax_dc_wv1, ax_dc_wv2, ax_dc_wv3, ax_dc_f0, ax_dc_f1, ax_dc_lv, ax_dc_method, ax_dc_source]
+_decomp_emd_axes    = [ax_dc_emd_sift]   # zarządzane osobno (DWT/EMD toggle)
 _decomp_display_axes = [ax_dc_sig, ax_dc_1, ax_dc_2, ax_dc_3]
+_spectrogram_panel_axes = [ax_spec_nfft, ax_spec_overlap, ax_spec_window, ax_spec_cmap, ax_spec_scale]
+_spectrogram_display_axes = [ax_spec_sig, ax_spec, ax_spec_cb]
 
 # Zapamiętaj oryginalne pozycje (przed jakimkolwiek przesunięciem)
 _offscreen = [-2.0, -2.0, 0.01, 0.01]
@@ -1306,13 +1592,15 @@ _windows_positions   = {a: list(a.get_position().bounds) for a in _windows_panel
 _wavelet_positions   = {a: list(a.get_position().bounds) for a in _wavelet_panel_axes}
 _db_subpanel_positions = {a: list(a.get_position().bounds) for a in _db_subpanel_axes}
 _decomp_positions    = {a: list(a.get_position().bounds) for a in _decomp_panel_axes}
+_decomp_emd_positions = {a: list(a.get_position().bounds) for a in _decomp_emd_axes}
+_spectrogram_positions = {a: list(a.get_position().bounds) for a in _spectrogram_panel_axes}
 
 def _apply_panel(show_list, show_pos):
     """Ukrywa wszystkie panele kontrolne i pokazuje tylko żądany.
-    Przy okazji przywraca główne osie (ax/ax_psd) i ukrywa osie dekomp."""
+    Przy okazji przywraca główne osie (ax/ax_psd) i ukrywa osie dekomp/spektrogram."""
     all_axes = (_signal_panel_axes + _spectral_panel_axes + _sampling_panel_axes
                 + _windows_panel_axes + _wavelet_panel_axes + _db_subpanel_axes
-                + _decomp_panel_axes)
+                + _decomp_panel_axes + _decomp_emd_axes + _spectrogram_panel_axes)
     for a in all_axes:
         a.set_position(_offscreen)
         a.set_visible(False)
@@ -1323,10 +1611,13 @@ def _apply_panel(show_list, show_pos):
     ax_psd.set_visible(True)
     for a in _decomp_display_axes:
         a.set_visible(False)
+    for a in _spectrogram_display_axes:
+        a.set_visible(False)
 
 def _set_tab_colors(active_btn):
     for btn in (btn_tab_signal, btn_tab_spectral, btn_tab_sampling,
-                btn_tab_windows, btn_tab_wavelets, btn_tab_decomp):
+                btn_tab_windows, btn_tab_wavelets, btn_tab_decomp,
+                btn_tab_spectrogram):
         color = 'lightblue' if btn is active_btn else 'lightgray'
         btn.color = color
         btn.ax.set_facecolor(color)
@@ -1383,6 +1674,37 @@ def _update_db_subpanel_visibility():
             a.set_visible(False)
 
 
+def _update_decomp_subpanel_visibility():
+    """Pokazuje/ukrywa kontrolki DWT vs EMD oraz chirp vs z panelu."""
+    is_emd = (radio_dc_method.value_selected == 'EMD')
+    is_chirp = (radio_dc_source.value_selected == 'chirp')
+    # Falki DWT — widoczne tylko w trybie DWT
+    for a in (ax_dc_wv1, ax_dc_wv2, ax_dc_wv3):
+        if is_emd:
+            a.set_position(_offscreen)
+            a.set_visible(False)
+        else:
+            a.set_position(_decomp_positions[a])
+            a.set_visible(True)
+    # Sift EMD — widoczny tylko w trybie EMD
+    if is_emd:
+        ax_dc_emd_sift.set_position(_decomp_emd_positions[ax_dc_emd_sift])
+        ax_dc_emd_sift.set_visible(True)
+    else:
+        ax_dc_emd_sift.set_position(_offscreen)
+        ax_dc_emd_sift.set_visible(False)
+    # Slidery chirp f0/f1 — widoczne tylko gdy źródło = chirp
+    for a in (ax_dc_f0, ax_dc_f1):
+        if is_chirp:
+            a.set_position(_decomp_positions[a])
+            a.set_visible(True)
+        else:
+            a.set_position(_offscreen)
+            a.set_visible(False)
+    # Etykieta suwaka zależy od trybu
+    slider_dc_lv.label.set_text('Max. IMFs' if is_emd else 'Poziom dekompozycji')
+
+
 def show_wavelets_panel(event=None):
     global _current_tab
     _current_tab = 'wavelets'
@@ -1396,6 +1718,7 @@ def show_decomp_panel(event=None):
     global _current_tab
     _current_tab = 'decomp'
     _apply_panel(_decomp_panel_axes, _decomp_positions)  # przywraca ax/ax_psd, ukrywa dekomp display
+    _update_decomp_subpanel_visibility()
     # nadpisanie: ukryj główne osie, pokaż osie dekompozycji
     ax.set_visible(False)
     ax_psd.set_visible(False)
@@ -1403,6 +1726,18 @@ def show_decomp_panel(event=None):
         a.set_visible(True)
     _set_tab_colors(btn_tab_decomp)
     update_decomp_plot()
+    fig.canvas.draw_idle()
+
+def show_spectrogram_panel(event=None):
+    global _current_tab
+    _current_tab = 'spectrogram'
+    _apply_panel(_spectrogram_panel_axes, _spectrogram_positions)
+    ax.set_visible(False)
+    ax_psd.set_visible(False)
+    for a in _spectrogram_display_axes:
+        a.set_visible(True)
+    _set_tab_colors(btn_tab_spectrogram)
+    update_spectrogram_plot()
     fig.canvas.draw_idle()
 
 # Funkcja do ładowania parametrów przy zmianie typu sygnału
@@ -1438,7 +1773,7 @@ def update(val):
     t_new = np.linspace(0, tmax, samples)
     y_new = generate_signal(t_new, signal_type, freq, amp, phase, impulse_pos)
 
-    if _current_tab not in ('windows', 'wavelets', 'decomp'):
+    if _current_tab not in ('windows', 'wavelets', 'decomp', 'spectrogram'):
         if line.axes is None:
             ax.cla()
             ax.grid(True, alpha=0.3)
@@ -1468,6 +1803,8 @@ def update(val):
         update_sampling_plot()
     elif _current_tab == 'windows':
         update_windows_plot()
+    elif _current_tab == 'spectrogram':
+        update_spectrogram_plot()
     elif _current_tab in ('wavelets', 'decomp'):
         pass  # obsługiwane przez własne funkcje update
     else:
@@ -1493,6 +1830,13 @@ btn_tab_sampling.on_clicked(show_sampling_panel)
 btn_tab_windows.on_clicked(show_windows_panel)
 btn_tab_wavelets.on_clicked(show_wavelets_panel)
 btn_tab_decomp.on_clicked(show_decomp_panel)
+btn_tab_spectrogram.on_clicked(show_spectrogram_panel)
+
+radio_spec_window.on_clicked(lambda label: update_spectrogram_plot())
+radio_spec_cmap.on_clicked(lambda label: update_spectrogram_plot())
+radio_spec_scale.on_clicked(lambda label: update_spectrogram_plot())
+slider_spec_nfft.on_changed(lambda val: update_spectrogram_plot())
+slider_spec_overlap.on_changed(lambda val: update_spectrogram_plot())
 
 radio_dc_wv1.on_clicked(lambda label: update_decomp_plot())
 radio_dc_wv2.on_clicked(lambda label: update_decomp_plot())
@@ -1500,6 +1844,15 @@ radio_dc_wv3.on_clicked(lambda label: update_decomp_plot())
 slider_dc_f0.on_changed(lambda val: update_decomp_plot())
 slider_dc_f1.on_changed(lambda val: update_decomp_plot())
 slider_dc_lv.on_changed(lambda val: update_decomp_plot())
+
+def _on_dc_method_changed(label):
+    _update_decomp_subpanel_visibility()
+    update_decomp_plot()
+    fig.canvas.draw_idle()
+
+radio_dc_method.on_clicked(_on_dc_method_changed)
+radio_dc_emd_sift.on_clicked(lambda label: update_decomp_plot())
+radio_dc_source.on_clicked(lambda label: (_update_decomp_subpanel_visibility(), update_decomp_plot(), fig.canvas.draw_idle()))
 
 slider_window_N.on_changed(lambda val: update_windows_plot())
 check_windows.on_clicked(lambda label: update_windows_plot())
