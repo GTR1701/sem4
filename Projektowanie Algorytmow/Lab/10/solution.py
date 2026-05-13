@@ -409,9 +409,9 @@ def zadanie5():
             print("Nieznany dział. Dostępne:", ", ".join(dzialy))
             continue
         if uf.czy_razem(a, b):
-            print(f"TAK – '{a}' i '{b}' należą do tej samej spójnej grupy.")
+            print(f"TAK - '{a}' i '{b}' należą do tej samej spójnej grupy.")
         else:
-            print(f"NIE – '{a}' i '{b}' są w różnych grupach.")
+            print(f"NIE - '{a}' i '{b}' są w różnych grupach.")
 
 
 # --- Menu główne ---
