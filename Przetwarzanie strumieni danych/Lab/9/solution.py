@@ -1631,7 +1631,7 @@ radio_den_noise_type = RadioButtons(ax_den_noise_type, ['biały', 'brązowy'])
 ax_den_noise_type.set_visible(False)
 
 # Metoda odszumiania — umieszczona w prawej kolumnie (x=0.60) aby nie nakładać się ze suwakami
-ax_den_method = plt.axes([0.60, 0.01, 0.15, 0.27])
+ax_den_method = plt.axes([0.65, 0.01, 0.15, 0.27])
 ax_den_method.set_title('Metoda odszumiania', fontsize=15)
 radio_den_method = RadioButtons(ax_den_method, ['Wiener', 'Savitzky-Golay', 'EMD'])
 ax_den_method.set_visible(False)
@@ -1848,7 +1848,7 @@ def compute_quality_metrics(y_orig, y_noisy):
     elif max_val < 1e-20:
         psnr = float('-inf')
     else:
-        psnr = 10.0 * np.log10(max_val ** 2 / mse)
+        psnr = 20.0 * np.log10(max_val/np.sqrt(mse))
     return mse, snr, psnr
 
 
