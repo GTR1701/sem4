@@ -1,0 +1,14 @@
+Podaj bok bloku (np. 3 dla planszy 9x9): 
+BlockHeight = 2;
+BlockWidth = 2;
+
+numCages = 6;
+
+cageID = [
+  [  1,   1,   1,   2],
+  [  3,   3,   3,   2],
+  [  4,   4,   5,   5],
+  [  4,   4,   6,   5],
+];
+
+cageTarget = [6, 5, 9, 10, 6, 4];
